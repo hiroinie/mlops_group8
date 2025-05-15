@@ -1,0 +1,46 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*.so
+
+# Virtual environments
+.venv/
+env/
+venv/
+ENV/
+pip-wheel-metadata/
+*.egg-info/
+.eggs/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints
+
+# Environment and dependency files
+.env
+.env.*
+*.env
+
+# Logs
+logs/
+*.log
+
+# Data
+data/
+!data/README.md           # Optionally keep a placeholder/readme in the folder
+
+# Test, split, and processed data (if/when added)
+data/processed/
+data/splits/
+data/raw/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Pytest cache
+.pytest_cache/
+.cache/
+
+# VSCode and other IDE config
+.vscode/
+.idea/
