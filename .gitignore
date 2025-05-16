@@ -24,9 +24,6 @@ pip-wheel-metadata/
 logs/
 *.log
 
-# Data
-data/
-!data/README.md           # Optionally keep a placeholder/readme in the folder
 
 # Test, split, and processed data (if/when added)
 data/processed/
