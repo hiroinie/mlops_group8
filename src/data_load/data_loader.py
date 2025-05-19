@@ -15,6 +15,8 @@ import yaml
 from dotenv import load_dotenv
 from typing import Optional
 
+logger = logging.getLogger(__name__)
+
 
 def load_config(config_path: str = "config.yaml") -> dict:
     """
@@ -75,11 +77,11 @@ def load_data(
         Exception: For other data loading errors
     """
     if not path:
-        logging.error("No data path specified in configuration.")
+        logger.error("No data path specified in configuration.")
         raise ValueError("No data path specified in configuration.")
 
     if not os.path.isfile(path):
-        logging.error(f"Data file does not exist: {path}")
+        logger.error(f"Data file does not exist: {path}")
         raise FileNotFoundError(f"Data file not found: {path}")
 
     try:
@@ -96,15 +98,15 @@ def load_data(
                     " a single 'sheet_name' in the configuration."
                 )
         else:
-            logging.error(f"Unsupported file type: {file_type}")
+            logger.error(f"Unsupported file type: {file_type}")
             raise ValueError(f"Unsupported file type: {file_type}")
 
-        logging.info(
+        logger.info(
             f"Loaded data from {path} ({file_type}), shape={df.shape}")
         return df
 
     except Exception as e:
-        logging.exception(f"Failed to load data: {e}")
+        logger.exception(f"Failed to load data: {e}")
         raise
 
 
@@ -132,7 +134,7 @@ def get_data(config_path: str = "config.yaml", env_path: str = ".env") -> pd.Dat
     data_cfg = config.get("data_source", {})
     path = data_cfg.get("path")
     if not path:
-        logging.error("No data path specified in configuration.")
+        logger.error("No data path specified in configuration.")
         raise ValueError("No data path specified in configuration.")
 
     df = load_data(
@@ -147,12 +149,9 @@ def get_data(config_path: str = "config.yaml", env_path: str = ".env") -> pd.Dat
 
 
 if __name__ == "__main__":
-    # Minimal logging for standalone/manual use only (main.py handles
-    # logging in production)
     logging.basicConfig(
-        # filename="logs/data_loader.log",
         level=logging.INFO,
-        format="%(asctime)s - %(levelname)s - %(message)s"
+        format="%(asctime)s - %(levelname)s - %(name)s - %(message)s"
     )
     try:
         df = get_data()

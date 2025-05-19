@@ -14,7 +14,9 @@ import logging
 import os
 import yaml
 
-from src.data.data_loader import get_data
+from src.data_load.data_loader import get_data
+
+logger = logging.getLogger(__name__)
 
 
 def setup_logging(logging_config: dict):
@@ -29,21 +31,25 @@ def setup_logging(logging_config: dict):
     if log_dir and not os.path.exists(log_dir):
         os.makedirs(log_dir, exist_ok=True)
 
+    log_format = logging_config.get(
+        "format", "%(asctime)s - %(levelname)s - %(name)s - %(message)s"
+    )
+    date_format = logging_config.get(
+        "datefmt", "%Y-%m-%d %H:%M:%S"
+    )
+
     logging.basicConfig(
         filename=log_file,
         level=getattr(logging, logging_config.get("level", "INFO")),
-        format=logging_config.get(
-            "format", "%(asctime)s - %(levelname)s - %(message)s"),
-        datefmt=logging_config.get("datefmt", "%Y-%m-%d %H:%M:%S"),
+        format=log_format,
+        datefmt=date_format,
         filemode="a"
     )
     console = logging.StreamHandler()
     console.setLevel(getattr(logging, logging_config.get("level", "INFO")))
     formatter = logging.Formatter(
-        logging_config.get(
-            "format", "%(asctime)s - %(levelname)s - %(message)s"),
-        datefmt=logging_config.get("datefmt", "%Y-%m-%d %H:%M:%S")
-    )
+        log_format,
+        date_format)
     console.setFormatter(formatter)
     logging.getLogger().addHandler(console)
 
@@ -99,26 +105,26 @@ def main():
         print(f"Failed to set up logging: {e}", file=sys.stderr)
         sys.exit(1)
 
-    logging.info("Pipeline started")
+    logger.info("Pipeline started")
 
     try:
         df = get_data(config_path=args.config, env_path=args.env)
         # Validate DataFrame output
         if df is None or not hasattr(df, "shape"):
-            logging.error(
+            logger.error(
                 "Data loading failed: get_data did not return a valid"
                 " DataFrame")
             print("Data loading failed: get_data did not return a valid"
                   " DataFrame")
             sys.exit(1)
-        logging.info(f"Data loaded successfully. Shape: {df.shape}")
+        logger.info(f"Data loaded successfully. Shape: {df.shape}")
         print(f"Data loaded. Shape: {df.shape}")
     except Exception as e:
-        logging.exception(f"Pipeline failed: {e}")
+        logger.exception(f"Pipeline failed: {e}")
         print(f"Pipeline failed: {e}")
         sys.exit(1)
 
-    logging.info("Pipeline completed successfully")
+    logger.info("Pipeline completed successfully")
 
 
 if __name__ == "__main__":
