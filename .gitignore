@@ -37,6 +37,7 @@ Thumbs.db
 # Pytest cache
 .pytest_cache/
 .cache/
+.coverage
 
 # VSCode and other IDE config
 .vscode/
