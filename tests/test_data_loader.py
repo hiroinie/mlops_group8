@@ -69,6 +69,7 @@ def test_load_data_unsupported_type(monkeypatch):
     config = dict(CSV_CONFIG)
     # Not implemented in the data_loader
     config["data_source"]["type"] = "parquet"
+    config["data_source"]["path"] = MOCK_CSV
     monkeypatch.setattr(data_loader, "load_config", lambda _: config)
     with pytest.raises(ValueError):
         data_loader.get_data(config_path="dummy.yaml", env_path=None)

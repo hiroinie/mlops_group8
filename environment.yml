@@ -4,13 +4,13 @@ channels:
   - conda-forge  # Community channel with most up-to-date packages
 
 dependencies:
-  - python=3.10     # Stable and widely-used Python version for compatibility
-  - pandas          # Core library for data loading (CSV, Excel) and manipulation
-  - openpyxl        # Excel support for pandas (read/write .xlsx files)
-  - pyyaml          # Read configuration from YAML files for flexibility
-  - python-dotenv   # Load environment variables from a .env file (for secrets/config)
-  - pytest          # Testing framework for robust, maintainable code
-  - pip             # Allows pip-only packages to be installed below
+  - python=3.10       # Stable and widely-used Python version for compatibility
+  - pandas            # Core library for data loading (CSV, Excel) and manipulation
+  - openpyxl          # Excel support for pandas (read/write .xlsx files)
+  - pyyaml            # Read configuration from YAML files for flexibility
+  - python-dotenv     # Load environment variables from a .env file (for secrets/config)
+  - pytest            # Testing framework for robust, maintainable code
+  - pip               # Allows pip-only packages to be installed below
 
   - pip:
       - pytest-cov  # Test coverage reporting for code quality and completeness
