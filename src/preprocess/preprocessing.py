@@ -45,6 +45,7 @@ def build_preprocessing_pipeline(config: Dict, continuous: list[str] | None = No
                              encode="onehot-dense", strategy="quantile"),
             continuous
         ))
+        
     # --- Normalization
     normalization = pp_cfg.get("normalization", "minmax")
     if normalization:
@@ -52,7 +53,7 @@ def build_preprocessing_pipeline(config: Dict, continuous: list[str] | None = No
         transformers.append((
             "norm",
             scaler,
-            continuous
+            ["rx_ds"]
         ))
 
     # Build ColumnTransformer, each step adds new columns
