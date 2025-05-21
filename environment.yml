@@ -10,6 +10,7 @@ dependencies:
   - pyyaml            # Read configuration from YAML files for flexibility
   - python-dotenv     # Load environment variables from a .env file (for secrets/config)
   - pytest            # Testing framework for robust, maintainable code
+  - pytest-dotenv     # Load environment variables from .env files in pytest
   - pip               # Allows pip-only packages to be installed below
 
   - pip:

@@ -1,7 +1,7 @@
 import os
 import pytest
 import pandas as pd
-from src.data_load import data_loader
+from data_load import data_loader
 
 # Paths for test files
 # Keeping paths relative to the test file ensures portability and independence from the user's working directory
