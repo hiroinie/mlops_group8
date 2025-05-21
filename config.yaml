@@ -19,9 +19,6 @@ data_split:
   test_size: 0.2
   valid_size: 0.2
   random_state: 42
-  train_path: data/splits/train.csv
-  valid_path: data/splits/valid.csv
-  test_path: data/splits/test.csv
 
 model:
   active: decision_tree  # Options: decision_tree, logistic_regression, random_forest
@@ -46,6 +43,27 @@ model:
       n_estimators: 100
       max_depth: 5
       random_state: 42
+
+raw_features:  
+  - rx_ds
+  - A
+  - B
+  - C
+  - D
+  - E
+  - F
+  - H
+  - I
+  - J
+  - K
+  - L
+  - M
+  - N
+  - R
+  - S
+  - T
+  - V
+
 
 features:
   # List all columns to use as features (update dynamically if engineered features added)

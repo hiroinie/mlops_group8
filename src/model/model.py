@@ -1,10 +1,10 @@
 """
 model.py
 
-Leakage-proof, full MLOps pipeline:
+Leakage-proof, end-to-end MLOps pipeline:
 - Splits raw data first
-- Fits preprocessing (ColumnTransformer) on train set only, applies to val/test
-- Trains model, evaluates, and saves both model and preprocessing artifacts
+- Fits preprocessing pipeline ONLY on train split, applies to valid/test
+- Trains model, evaluates, and saves model and preprocessing artifacts
 """
 
 import os
@@ -19,7 +19,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import (
     accuracy_score, precision_score, recall_score, f1_score, roc_auc_score, confusion_matrix
 )
-from src.preprocess.preprocessing import build_preprocessing_pipeline, rename_columns
+from src.preprocess.preprocessing import build_preprocessing_pipeline, get_output_feature_names, run_preprocessing_pipeline
 
 logger = logging.getLogger(__name__)
 
@@ -89,87 +89,81 @@ def save_artifact(obj, path: str):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "wb") as f:
         pickle.dump(obj, f)
-    logger.info(f"Saved artifact to {path}")
+    logger.info(f"Artifact saved to {path}")
 
 
 def format_metrics(metrics: dict, ndigits: int = 2) -> dict:
-    formatted = {}
-    for k, v in metrics.items():
-        if isinstance(v, (float, int)):
-            formatted[k] = round(float(v), ndigits)
-        elif hasattr(v, "item"):
-            formatted[k] = round(float(v.item()), ndigits)
-        else:
-            formatted[k] = v
-    return formatted
+    return {k: round(float(v), ndigits) if isinstance(v, (float, int)) else v for k, v in metrics.items()}
 
 
 def run_model_pipeline(df: pd.DataFrame, config: Dict[str, Any]):
-    # Rename columns before splitting (if needed)
-    pp_cfg = config.get("preprocessing", {}).get("rx_ds", {})
-    rename_map = pp_cfg.get("rename_columns", {})
-    df = rename_columns(df, rename_map)
-
-    features = config["features"]
+    df = run_preprocessing_pipeline(df, config)
+    assert "rx_ds" in df.columns, "rx_ds column not found in DataFrame after preprocessing"
+    # Features here are all columns except target and those excluded by config
+    # 2 – define feature list from config to avoid leakage
+    raw_features = config.get("raw_features", [])
+    input_features = [f for f in raw_features if f != config["target"]] \
+        if raw_features else [c for c in df.columns if c != config["target"]]
     target = config["target"]
     split_cfg = config["data_split"]
     metrics = config["metrics"]
-
-    missing = [col for col in features if col not in df.columns]
-    if missing:
-        logger.error(f"Missing features in processed data: {missing}")
-        raise ValueError(f"Missing features: {missing}")
-
-    # Split data before any fitting (no leakage)
-    X_train, X_valid, X_test, y_train, y_valid, y_test = split_data(
-        df, features, target, split_cfg)
-
-    # Build and fit pipeline on training set only
-    pipeline = build_preprocessing_pipeline(config, features)
-    pipeline.fit(X_train)
-
-    # Transform all splits
-    X_train_prep = pipeline.transform(X_train)
-    X_valid_prep = pipeline.transform(X_valid)
-    X_test_prep = pipeline.transform(X_test)
-
-    # Train model
     model_config = config["model"]
     active = model_config.get("active", "decision_tree")
     active_model_cfg = model_config[active]
     model_type = active
     params = active_model_cfg.get("params", {})
     save_path = active_model_cfg.get("save_path", "models/model.pkl")
-    model = train_model(X_train_prep, y_train, model_type, params)
+    preproc_path = "models/preprocessing.pkl"
 
+    # Split the data first (to prevent leakage)
+    X_train, X_valid, X_test, y_train, y_valid, y_test = split_data(
+        df, input_features, target, split_cfg)
+    # Build preprocessing pipeline
+    # extend if you add more numeric features
+    continuous_cols = ["rx_ds"]
+    preprocessor = build_preprocessing_pipeline(config, continuous_cols)
+    # Fit on train, transform all
+    X_train_pp = preprocessor.fit_transform(
+        pd.DataFrame(X_train, columns=input_features))
+    X_valid_pp = preprocessor.transform(
+        pd.DataFrame(X_valid, columns=input_features))
+    X_test_pp = preprocessor.transform(
+        pd.DataFrame(X_test, columns=input_features))
+    # Feature names after transformation
+    out_cols = get_output_feature_names(preprocessor, input_features, config)
+    X_train_pp = pd.DataFrame(X_train_pp, columns=out_cols)
+    X_valid_pp = pd.DataFrame(X_valid_pp, columns=out_cols)
+    X_test_pp = pd.DataFrame(X_test_pp, columns=out_cols)
+
+    # Save preprocessing pipeline artifact
+    save_artifact(preprocessor, preproc_path)
+    # Train model
+    model = train_model(X_train_pp.values, y_train, model_type, params)
     # Evaluate
-    results_valid = evaluate_model(model, X_valid_prep, y_valid, metrics)
-    results_test = evaluate_model(model, X_test_prep, y_test, metrics)
-    logger.info(f"Validation set metrics: {format_metrics(results_valid)}")
-    logger.info(f"Test set metrics: {format_metrics(results_test)}")
-
-    # Save model and pipeline artifacts
+    results_valid = evaluate_model(model, X_valid_pp.values, y_valid, metrics)
+    results_test = evaluate_model(model, X_test_pp.values, y_test, metrics)
+    formatted_results_valid = format_metrics(results_valid)
+    formatted_results_test = format_metrics(results_test)
+    logger.info(f"Validation set metrics: {formatted_results_valid}")
+    logger.info(f"Test set metrics: {formatted_results_test}")
+    # Save model
     save_artifact(model, save_path)
-    pipe_path = config.get("artifacts", {}).get(
-        "preprocessing_pipeline", "models/preprocessing_pipeline.pkl")
-    save_artifact(pipeline, pipe_path)
 
 
-# CLI for standalone training (optional)
+# CLI for standalone training
 if __name__ == "__main__":
     import sys
     import yaml
-
+    import logging
     logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s - %(levelname)s - %(name)s - %(message)s"
-    )
-    if len(sys.argv) < 3:
-        logger.error(
-            "Usage: python -m src.model.model <raw_data.csv> <config.yaml>")
-        sys.exit(1)
-    raw_data_path, config_path = sys.argv[1:3]
-    df = pd.read_csv(raw_data_path)
+        level=logging.INFO, format="%(asctime)s - %(levelname)s - %(name)s - %(message)s")
+    config_path = sys.argv[1] if len(sys.argv) > 1 else "config.yaml"
     with open(config_path, "r") as f:
         config = yaml.safe_load(f)
+    try:
+        from src.data_load.data_loader import get_data
+        df = get_data(config_path=config_path, data_stage="raw")
+    except ImportError:
+        data_path = config["data_source"]["raw_path"]
+        df = pd.read_csv(data_path)
     run_model_pipeline(df, config)
