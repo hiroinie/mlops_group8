@@ -15,7 +15,7 @@ BAD_FILE = os.path.join(MOCK_DATA_DIR, "nonexistent.csv")
 # These are "inline configs" for test isolation, so tests do not depend on or modify real production configs
 CSV_CONFIG = {
     "data_source": {
-        "path": MOCK_CSV,
+        "raw_path": MOCK_CSV,
         "type": "csv",
         "delimiter": ",",
         "header": 0,
@@ -25,7 +25,7 @@ CSV_CONFIG = {
 
 EXCEL_CONFIG = {
     "data_source": {
-        "path": MOCK_XLSX,
+        "raw_path": MOCK_XLSX,
         "type": "excel",
         "sheet_name": "Sheet1",
         "header": 0,
@@ -55,7 +55,7 @@ def test_load_data_missing_file(monkeypatch):
     """
     config = dict(CSV_CONFIG)
     # Point to a file that doesn't exist
-    config["data_source"]["path"] = BAD_FILE
+    config["data_source"]["raw_path"] = BAD_FILE
     monkeypatch.setattr(data_loader, "load_config", lambda _: config)
     with pytest.raises(FileNotFoundError):
         data_loader.get_data(config_path="dummy.yaml", env_path=None)
@@ -69,7 +69,7 @@ def test_load_data_unsupported_type(monkeypatch):
     config = dict(CSV_CONFIG)
     # Not implemented in the data_loader
     config["data_source"]["type"] = "parquet"
-    config["data_source"]["path"] = MOCK_CSV
+    config["data_source"]["raw_path"] = MOCK_CSV
     monkeypatch.setattr(data_loader, "load_config", lambda _: config)
     with pytest.raises(ValueError):
         data_loader.get_data(config_path="dummy.yaml", env_path=None)
@@ -81,7 +81,7 @@ def test_load_data_no_path(monkeypatch):
     Verifies config validation logic is enforced, preventing ambiguous failures or cryptic error messages.
     """
     config = dict(CSV_CONFIG)
-    config["data_source"].pop("path")  # Remove 'path' key
+    config["data_source"].pop("raw_path")  # Remove 'path' key
     monkeypatch.setattr(data_loader, "load_config", lambda _: config)
     with pytest.raises(ValueError):
         data_loader.get_data(config_path="dummy.yaml", env_path=None)
