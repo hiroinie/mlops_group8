@@ -16,6 +16,8 @@ import yaml
 import pandas as pd
 from src.data_load.data_loader import get_data
 from src.model.model import run_model_pipeline
+from src.preprocess.preprocessing import run_preprocessing_pipeline
+
 
 logger = logging.getLogger(__name__)
 
@@ -120,19 +122,24 @@ def main():
     logger.info("Pipeline started")
 
     try:
-        # By default, load processed data for modeling
-        df = get_data(config_path=args.config, env_path=args.env,
-                      data_stage=args.data_stage)
-        if df is None or not hasattr(df, "shape"):
+        # Always load raw data first for full pipeline
+        df_raw = get_data(config_path=args.config,
+                          env_path=args.env, data_stage="raw")
+        if df_raw is None or not hasattr(df_raw, "shape"):
             logger.error(
                 "Data loading failed: get_data did not return a valid DataFrame")
             print("Data loading failed: get_data did not return a valid DataFrame")
             sys.exit(1)
-        logger.info(f"Data loaded successfully. Shape: {df.shape}")
-        print(f"Data loaded. Shape: {df.shape}")
+        logger.info(f"Raw data loaded successfully. Shape: {df_raw.shape}")
+        print(f"Raw data loaded. Shape: {df_raw.shape}")
 
-        # Run the model pipeline and save splits/model
-        run_model_pipeline(df=df, config=config)
+        # Preprocess and overwrite processed data file
+        df_processed = run_preprocessing_pipeline(df_raw, config)
+        logger.info(f"Preprocessed data shape: {df_processed.shape}")
+        print(f"Preprocessed data shape: {df_processed.shape}")
+
+        # Model pipeline runs on processed data
+        run_model_pipeline(df=df_processed, config=config)
 
     except Exception as e:
         logger.exception(f"Pipeline failed: {e}")

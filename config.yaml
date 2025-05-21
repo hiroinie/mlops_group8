@@ -79,3 +79,12 @@ metrics:
   - Negative Predictive Value (NPV)
   - ROC AUC
 
+preprocessing:
+  rx_ds:
+    normalization: minmax           # or 'zscore'
+    bucketize: true                 # set to false to disable bucketing
+    n_buckets: 4
+    bucket_labels: [Q1, Q2, Q3, Q4]
+    one_hot_encode_buckets: true    # set to false to skip dummy vars
+    rename_columns:
+      "rx ds": rx_ds                # key: old name, value: new name
