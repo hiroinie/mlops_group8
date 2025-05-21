@@ -19,19 +19,6 @@ logger = logging.getLogger(__name__)
 
 
 def load_config(config_path: str = "config.yaml") -> dict:
-    """
-    Load configuration settings from a YAML file.
-
-    Args:
-        config_path (str): Path to the YAML configuration file
-
-    Returns:
-        dict: Configuration dictionary
-
-    Raises:
-        FileNotFoundError: If the file does not exist
-        yaml.YAMLError: If the YAML is invalid
-    """
     if not os.path.isfile(config_path):
         raise FileNotFoundError(f"Config file not found: {config_path}")
     with open(config_path, "r") as f:
@@ -40,12 +27,6 @@ def load_config(config_path: str = "config.yaml") -> dict:
 
 
 def load_env(env_path: str = ".env"):
-    """
-    Load environment variables from a .env file if present.
-
-    Args:
-        env_path (str): Path to the .env file
-    """
     load_dotenv(dotenv_path=env_path, override=True)
 
 
@@ -57,33 +38,12 @@ def load_data(
     header: int = 0,
     encoding: str = "utf-8"
 ) -> pd.DataFrame:
-    """
-    Load data from a CSV or Excel file with validation and logging.
-
-    Args:
-        path (str): Path to the data file
-        file_type (str): Either "csv" or "excel"
-        sheet_name (Optional[str]): Sheet name (for Excel files)
-        delimiter (str): Delimiter for CSV files
-        header (int): Row number for column headers
-        encoding (str): File encoding
-
-    Returns:
-        pd.DataFrame: Loaded data
-
-    Raises:
-        FileNotFoundError: If the data file does not exist
-        ValueError: For unsupported file types or missing parameters
-        Exception: For other data loading errors
-    """
-    if not path:
-        logger.error("No data path specified in configuration.")
-        raise ValueError("No data path specified in configuration.")
-
+    if not path or not isinstance(path, str):
+        logger.error("No valid data path specified in configuration.")
+        raise ValueError("No valid data path specified in configuration.")
     if not os.path.isfile(path):
         logger.error(f"Data file does not exist: {path}")
         raise FileNotFoundError(f"Data file not found: {path}")
-
     try:
         if file_type == "csv":
             df = pd.read_csv(path, delimiter=delimiter,
@@ -91,20 +51,15 @@ def load_data(
         elif file_type == "excel":
             df = pd.read_excel(path, sheet_name=sheet_name,
                                header=header, engine="openpyxl")
-            # Warn if user forgot to specify a sheet and got multiple sheets
             if isinstance(df, dict):
                 raise ValueError(
-                    "Multiple sheets detected in Excel file. Please specify"
-                    " a single 'sheet_name' in the configuration."
+                    "Multiple sheets detected in Excel file. Please specify a single 'sheet_name' in the configuration."
                 )
         else:
             logger.error(f"Unsupported file type: {file_type}")
             raise ValueError(f"Unsupported file type: {file_type}")
-
-        logger.info(
-            f"Loaded data from {path} ({file_type}), shape={df.shape}")
+        logger.info(f"Loaded data from {path} ({file_type}), shape={df.shape}")
         return df
-
     except Exception as e:
         logger.exception(f"Failed to load data: {e}")
         raise
@@ -113,30 +68,11 @@ def load_data(
 def get_data(
     config_path: str = "config.yaml",
     env_path: str = ".env",
-    data_stage: str = "raw"  # 'raw' or 'processed'
+    data_stage: str = "raw"
 ) -> pd.DataFrame:
-    """
-       Main entry point for loading data in MLOps pipelines.
-
-       This function:
-       - Loads environment variables (.env) for secrets/config
-       - Loads YAML configuration for data source settings
-       - Loads and returns the data as a DataFrame
-
-       Args:
-           config_path (str): Path to configuration file
-           env_path (str): Path to .env file
-
-       Returns:
-           pd.DataFrame: Loaded data for downstream processing
-
-       Raises:
-           Exception: Any error in the configuration or data loading process
-       """
     load_env(env_path)
     config = load_config(config_path)
     data_cfg = config.get("data_source", {})
-
     if data_stage == "raw":
         path = data_cfg.get("raw_path")
     elif data_stage == "processed":
@@ -144,13 +80,11 @@ def get_data(
     else:
         logger.error(f"Unknown data_stage: {data_stage}")
         raise ValueError(f"Unknown data_stage: {data_stage}")
-
-    if not path:
+    if not path or not isinstance(path, str):
         logger.error(
-            "No data path specified in configuration for data_stage='%s'.", data_stage)
+            "No valid data path specified in configuration for data_stage='%s'.", data_stage)
         raise ValueError(
-            f"No data path specified in configuration for data_stage='{data_stage}'.")
-
+            f"No valid data path specified in configuration for data_stage='{data_stage}'.")
     df = load_data(
         path=path,
         file_type=data_cfg.get("type", "csv"),
@@ -168,7 +102,6 @@ if __name__ == "__main__":
         format="%(asctime)s - %(levelname)s - %(name)s - %(message)s"
     )
     try:
-        # By default, load raw
         df = get_data(data_stage="raw")
         logging.info(f"Data loaded successfully. Shape: {df.shape}")
     except Exception as e:

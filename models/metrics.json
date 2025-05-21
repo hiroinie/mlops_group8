@@ -1,0 +1,1 @@
+{"validation": {"Accuracy": 0.86, "Precision (PPV)": 0.83, "Specificity": 0.99, "F1 Score": 0.42, "Negative Predictive Value (NPV)": 0.86, "ROC AUC": 0.83}, "test": {"Accuracy": 0.86, "Precision (PPV)": 0.85, "Specificity": 0.99, "F1 Score": 0.45, "Negative Predictive Value (NPV)": 0.87, "ROC AUC": 0.86}}

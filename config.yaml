@@ -66,29 +66,32 @@ raw_features:
 
 
 features:
-  # List all columns to use as features (update dynamically if engineered features added)
-  - rx_ds_norm
-  - rx_ds_bucket_Q1
-  - rx_ds_bucket_Q2
-  - rx_ds_bucket_Q3
-  - rx_ds_bucket_Q4
-  - A
-  - B
-  - C
-  - D
-  - E
-  - F
-  - H
-  - I
-  - J
-  - K
-  - L
-  - M
-  - N
-  - R
-  - S
-  - T
-  - V
+  continuous:
+    - rx_ds
+  categorical: []
+  engineered:
+    - rx_ds_norm
+    - rx_ds_bucket_Q1
+    - rx_ds_bucket_Q2
+    - rx_ds_bucket_Q3
+    - rx_ds_bucket_Q4
+    - A
+    - B
+    - C
+    - D
+    - E
+    - F
+    - H
+    - I
+    - J
+    - K
+    - L
+    - M
+    - N
+    - R
+    - S
+    - T
+    - V
 
 target: OD
 
@@ -102,14 +105,16 @@ metrics:
   - ROC AUC
 
 preprocessing:
+  rename_columns:
+    "rx ds": rx_ds
   rx_ds:
-    normalization: minmax           # or 'zscore'
-    bucketize: true                 # set to false to disable bucketing
+    normalization: minmax
+    bucketize: true
     n_buckets: 4
     bucket_labels: [Q1, Q2, Q3, Q4]
-    one_hot_encode_buckets: true    # set to false to skip dummy vars
-    rename_columns:
-      "rx ds": rx_ds                # key: old name, value: new name
+    one_hot_encode_buckets: true
 
 artifacts:
   preprocessing_pipeline: models/preprocessing_pipeline.pkl
+  metrics_path: models/metrics.json
+

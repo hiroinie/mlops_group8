@@ -10,7 +10,7 @@ Leakage-proof, end-to-end MLOps pipeline:
 import os
 import logging
 import pickle
-from typing import List, Dict, Any
+from typing import Dict, Any
 import pandas as pd
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.linear_model import LogisticRegression
@@ -28,22 +28,6 @@ MODEL_REGISTRY = {
     "logistic_regression": LogisticRegression,
     "random_forest": RandomForestClassifier,
 }
-
-
-def split_data(df: pd.DataFrame, features: List[str], target: str, split_cfg: Dict[str, Any]):
-    X = df[features].values
-    y = df[target].values
-    test_size = split_cfg.get("test_size", 0.2)
-    valid_size = split_cfg.get("valid_size", 0.2)
-    random_state = split_cfg.get("random_state", 42)
-    X_train, X_temp, y_train, y_temp = train_test_split(
-        X, y, test_size=(test_size + valid_size), random_state=random_state, stratify=y
-    )
-    rel_valid = valid_size / (test_size + valid_size)
-    X_valid, X_test, y_valid, y_test = train_test_split(
-        X_temp, y_temp, test_size=rel_valid, random_state=random_state, stratify=y_temp
-    )
-    return X_train, X_valid, X_test, y_train, y_valid, y_test
 
 
 def train_model(X_train, y_train, model_type, params):
@@ -98,56 +82,84 @@ def format_metrics(metrics: dict, ndigits: int = 2) -> dict:
 
 def run_model_pipeline(df: pd.DataFrame, config: Dict[str, Any]):
     df = run_preprocessing_pipeline(df, config)
-    assert "rx_ds" in df.columns, "rx_ds column not found in DataFrame after preprocessing"
-    # Features here are all columns except target and those excluded by config
-    # 2 – define feature list from config to avoid leakage
+    assert config["target"] in df.columns, f"{config['target']} column not found in DataFrame after preprocessing"
+
+    # 1. Split data using only raw features (present in the original file)
     raw_features = config.get("raw_features", [])
-    input_features = [f for f in raw_features if f != config["target"]] \
-        if raw_features else [c for c in df.columns if c != config["target"]]
     target = config["target"]
     split_cfg = config["data_split"]
-    metrics = config["metrics"]
+    input_features_raw = [f for f in raw_features if f != target]
+
+    X = df[input_features_raw]
+    y = df[target]
+    test_size = split_cfg.get("test_size", 0.2)
+    valid_size = split_cfg.get("valid_size", 0.2)
+    random_state = split_cfg.get("random_state", 42)
+
+    X_train, X_temp, y_train, y_temp = train_test_split(
+        X, y, test_size=(test_size + valid_size), random_state=random_state, stratify=y
+    )
+    rel_valid = valid_size / (test_size + valid_size)
+    X_valid, X_test, y_valid, y_test = train_test_split(
+        X_temp, y_temp, test_size=rel_valid, random_state=random_state, stratify=y_temp
+    )
+
+    # 2. Fit preprocessing pipeline on X_train, transform all splits
+    preprocessor = build_preprocessing_pipeline(config)
+    X_train_pp = preprocessor.fit_transform(X_train)
+    X_valid_pp = preprocessor.transform(X_valid)
+    X_test_pp = preprocessor.transform(X_test)
+
+    # 3. Create DataFrames with engineered feature columns
+    engineered_features = config.get("features", {}).get("engineered", [])
+    out_cols = get_output_feature_names(
+        preprocessor, input_features_raw, config)
+    X_train_pp = pd.DataFrame(X_train_pp, columns=out_cols)
+    X_valid_pp = pd.DataFrame(X_valid_pp, columns=out_cols)
+    X_test_pp = pd.DataFrame(X_test_pp, columns=out_cols)
+
+    # 4. Use only engineered features for modeling
+    input_features = [
+        f for f in engineered_features if f in X_train_pp.columns]
+    X_train_pp = X_train_pp[input_features]
+    X_valid_pp = X_valid_pp[input_features]
+    X_test_pp = X_test_pp[input_features]
+
+    # Save preprocessing pipeline artifact
+    preproc_path = config.get("artifacts", {}).get(
+        "preprocessing_pipeline", "models/preprocessing_pipeline.pkl")
+    save_artifact(preprocessor, preproc_path)
+
+    # Train model
     model_config = config["model"]
     active = model_config.get("active", "decision_tree")
     active_model_cfg = model_config[active]
     model_type = active
     params = active_model_cfg.get("params", {})
     save_path = active_model_cfg.get("save_path", "models/model.pkl")
-    preproc_path = "models/preprocessing.pkl"
-
-    # Split the data first (to prevent leakage)
-    X_train, X_valid, X_test, y_train, y_valid, y_test = split_data(
-        df, input_features, target, split_cfg)
-    # Build preprocessing pipeline
-    # extend if you add more numeric features
-    continuous_cols = ["rx_ds"]
-    preprocessor = build_preprocessing_pipeline(config, continuous_cols)
-    # Fit on train, transform all
-    X_train_pp = preprocessor.fit_transform(
-        pd.DataFrame(X_train, columns=input_features))
-    X_valid_pp = preprocessor.transform(
-        pd.DataFrame(X_valid, columns=input_features))
-    X_test_pp = preprocessor.transform(
-        pd.DataFrame(X_test, columns=input_features))
-    # Feature names after transformation
-    out_cols = get_output_feature_names(preprocessor, input_features, config)
-    X_train_pp = pd.DataFrame(X_train_pp, columns=out_cols)
-    X_valid_pp = pd.DataFrame(X_valid_pp, columns=out_cols)
-    X_test_pp = pd.DataFrame(X_test_pp, columns=out_cols)
-
-    # Save preprocessing pipeline artifact
-    save_artifact(preprocessor, preproc_path)
-    # Train model
     model = train_model(X_train_pp.values, y_train, model_type, params)
+
     # Evaluate
+    metrics = config["metrics"]
     results_valid = evaluate_model(model, X_valid_pp.values, y_valid, metrics)
     results_test = evaluate_model(model, X_test_pp.values, y_test, metrics)
     formatted_results_valid = format_metrics(results_valid)
     formatted_results_test = format_metrics(results_test)
     logger.info(f"Validation set metrics: {formatted_results_valid}")
     logger.info(f"Test set metrics: {formatted_results_test}")
-    # Save model
+
+    # Save model and metrics
     save_artifact(model, save_path)
+    metrics_path = config.get("artifacts", {}).get(
+        "metrics_path", "models/metrics.json")
+    import json
+    os.makedirs(os.path.dirname(metrics_path), exist_ok=True)
+    with open(metrics_path, "w") as f:
+        json.dump({
+            "validation": formatted_results_valid,
+            "test": formatted_results_test
+        }, f)
+    logger.info(f"Metrics saved to {metrics_path}")
 
 
 # CLI for standalone training
