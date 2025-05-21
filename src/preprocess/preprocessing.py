@@ -2,9 +2,10 @@
 preprocessing.py
 
 Performs all preprocessing on the opioid data for MLOps pipelines:
-- Renames columns (configurable)
-- Buckets and one-hot encodes 'rx_ds' (configurable bucket count/labels)
-- Normalizes 'rx_ds' (minmax or zscore, from config)
+- Renames columns (configurable, done before pipeline)
+- Uses sklearn KBinsDiscretizer for quantile bucketing (out-of-the-box)
+- Uses sklearn MinMaxScaler or StandardScaler for normalization (from config)
+- Uses sklearn OneHotEncoder for dummy variables
 - All options driven by config.yaml for reproducibility and instructional clarity
 """
 
@@ -12,6 +13,7 @@ import os
 import logging
 from typing import Dict
 import pandas as pd
+from sklearn.preprocessing import KBinsDiscretizer, MinMaxScaler, StandardScaler
 
 logger = logging.getLogger(__name__)
 
@@ -26,67 +28,47 @@ def rename_columns(df: pd.DataFrame, rename_map: dict) -> pd.DataFrame:
     return df
 
 
-def bucketize_column(df: pd.DataFrame, col: str, n_buckets: int, bucket_labels, one_hot: bool) -> pd.DataFrame:
-    df = df.copy()
-    bucket_col = f"{col}_bucket"
-    df[bucket_col] = pd.qcut(df[col], q=n_buckets, labels=bucket_labels)
-    logger.info(
-        f"Bucketed '{col}' into {n_buckets} quantiles: {bucket_labels}")
-    if one_hot:
-        # <--- Ensures int type
-        dummies = pd.get_dummies(df[bucket_col], prefix=bucket_col, dtype=int)
-        df = pd.concat([df, dummies], axis=1)
-        logger.info(f"One-hot encoded '{bucket_col}'")
-        df.drop([bucket_col], axis=1, inplace=True)
-    return df
-
-
-def normalize_column(df: pd.DataFrame, col: str, method: str) -> pd.DataFrame:
-    """
-    Normalize a column using the specified method.
-    """
-    df = df.copy()
-    new_col = f"{col}_norm"
-    if method == 'minmax':
-        min_val = df[col].min()
-        max_val = df[col].max()
-        df[new_col] = (df[col] - min_val) / (max_val - min_val)
-        logger.info(f"Normalized '{col}' using min-max scaling")
-    elif method == 'zscore':
-        mean_val = df[col].mean()
-        std_val = df[col].std()
-        df[new_col] = (df[col] - mean_val) / std_val
-        logger.info(f"Normalized '{col}' using z-score scaling")
-    else:
-        raise ValueError(f"Unknown normalization method: {method}")
-    return df
-
-
 def run_preprocessing_pipeline(df: pd.DataFrame, config: Dict) -> pd.DataFrame:
     """
     Apply all preprocessing steps as specified in config.
     Saves the processed dataframe to processed_path from config.
+    Uses only sklearn out-of-the-box transformers.
     """
     pp_cfg = config.get("preprocessing", {}).get("rx_ds", {})
 
-    # Column renaming
+    # --- 1. Column renaming (before pipeline)
     rename_map = pp_cfg.get("rename_columns", {})
     df = rename_columns(df, rename_map)
 
-    # Bucketize and one-hot encode if enabled
+    # --- 2. KBinsDiscretizer for quantile buckets (out-of-the-box)
     if pp_cfg.get("bucketize", True):
         n_buckets = pp_cfg.get("n_buckets", 4)
-        bucket_labels = pp_cfg.get(
-            "bucket_labels", [f"Q{i+1}" for i in range(n_buckets)])
-        one_hot = pp_cfg.get("one_hot_encode_buckets", True)
-        df = bucketize_column(df, "rx_ds", n_buckets, bucket_labels, one_hot)
+        strategy = "quantile"
+        kbd = KBinsDiscretizer(
+            n_bins=n_buckets, encode='onehot-dense', strategy=strategy)
+        bucketized = kbd.fit_transform(df[['rx_ds']])
+        bucket_cols = [f"rx_ds_bucket_Q{i+1}" for i in range(n_buckets)]
+        bucket_df = pd.DataFrame(
+            bucketized, columns=bucket_cols, index=df.index)
+        df = pd.concat([df, bucket_df], axis=1)
+        logger.info(
+            f"Bucketized 'rx_ds' into {n_buckets} quantile bins and one-hot encoded")
 
-    # Normalize if enabled
+    # --- 3. Normalization
     normalization = pp_cfg.get("normalization", "minmax")
     if normalization:
-        df = normalize_column(df, "rx_ds", normalization)
+        if normalization == "minmax":
+            scaler = MinMaxScaler()
+            df['rx_ds_norm'] = scaler.fit_transform(df[['rx_ds']])
+            logger.info(f"Normalized 'rx_ds' using min-max scaling")
+        elif normalization == "zscore":
+            scaler = StandardScaler()
+            df['rx_ds_norm'] = scaler.fit_transform(df[['rx_ds']])
+            logger.info(f"Normalized 'rx_ds' using z-score scaling")
+        else:
+            raise ValueError(f"Unknown normalization method: {normalization}")
 
-    # Save to processed_path
+    # --- 4. Save to processed_path
     processed_path = config["data_source"].get("processed_path")
     if not processed_path:
         logger.error("No processed_path found in config['data_source']")
@@ -112,8 +94,10 @@ if __name__ == "__main__":
 
     # Check for correct usage
     if len(sys.argv) < 3:
-        logging.error("Usage: python -m src.preprocess.preprocessing <raw_data.csv> <config.yaml>")
-        logging.error("Example: python -m src.preprocess.preprocessing data/raw/opiod_raw_data.csv config.yaml")
+        logging.error(
+            "Usage: python -m src.preprocess.preprocessing <raw_data.csv> <config.yaml>")
+        logging.error(
+            "Example: python -m src.preprocess.preprocessing data/raw/opiod_raw_data.csv config.yaml")
         sys.exit(1)
 
     raw_data_path = sys.argv[1]
