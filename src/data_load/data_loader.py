@@ -110,32 +110,46 @@ def load_data(
         raise
 
 
-def get_data(config_path: str = "config.yaml", env_path: str = ".env") -> pd.DataFrame:
+def get_data(
+    config_path: str = "config.yaml",
+    env_path: str = ".env",
+    data_stage: str = "raw"  # 'raw' or 'processed'
+) -> pd.DataFrame:
     """
-    Main entry point for loading data in MLOps pipelines.
+       Main entry point for loading data in MLOps pipelines.
 
-    This function:
-    - Loads environment variables (.env) for secrets/config
-    - Loads YAML configuration for data source settings
-    - Loads and returns the data as a DataFrame
+       This function:
+       - Loads environment variables (.env) for secrets/config
+       - Loads YAML configuration for data source settings
+       - Loads and returns the data as a DataFrame
 
-    Args:
-        config_path (str): Path to configuration file
-        env_path (str): Path to .env file
+       Args:
+           config_path (str): Path to configuration file
+           env_path (str): Path to .env file
 
-    Returns:
-        pd.DataFrame: Loaded data for downstream processing
+       Returns:
+           pd.DataFrame: Loaded data for downstream processing
 
-    Raises:
-        Exception: Any error in the configuration or data loading process
-    """
+       Raises:
+           Exception: Any error in the configuration or data loading process
+       """
     load_env(env_path)
     config = load_config(config_path)
     data_cfg = config.get("data_source", {})
-    path = data_cfg.get("path")
+
+    if data_stage == "raw":
+        path = data_cfg.get("raw_path")
+    elif data_stage == "processed":
+        path = data_cfg.get("processed_path")
+    else:
+        logger.error(f"Unknown data_stage: {data_stage}")
+        raise ValueError(f"Unknown data_stage: {data_stage}")
+
     if not path:
-        logger.error("No data path specified in configuration.")
-        raise ValueError("No data path specified in configuration.")
+        logger.error(
+            "No data path specified in configuration for data_stage='%s'.", data_stage)
+        raise ValueError(
+            f"No data path specified in configuration for data_stage='{data_stage}'.")
 
     df = load_data(
         path=path,
@@ -154,7 +168,8 @@ if __name__ == "__main__":
         format="%(asctime)s - %(levelname)s - %(name)s - %(message)s"
     )
     try:
-        df = get_data()
+        # By default, load raw
+        df = get_data(data_stage="raw")
         print(f"Data loaded successfully. Shape: {df.shape}")
     except Exception as e:
         print(f"Failed to load data: {e}")

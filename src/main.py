@@ -13,8 +13,9 @@ import sys
 import logging
 import os
 import yaml
-
+import pandas as pd
 from src.data_load.data_loader import get_data
+from src.model.model import run_model_pipeline
 
 logger = logging.getLogger(__name__)
 
@@ -119,6 +120,20 @@ def main():
             sys.exit(1)
         logger.info(f"Data loaded successfully. Shape: {df.shape}")
         print(f"Data loaded. Shape: {df.shape}")
+    except Exception as e:
+        logger.exception(f"Pipeline failed: {e}")
+        print(f"Pipeline failed: {e}")
+        sys.exit(1)
+
+        logger.info(f"Data loaded successfully. Shape: {df.shape}")
+        print(f"Data loaded. Shape: {df.shape}")
+
+        # Run the model pipeline and save splits/model
+        run_model_pipeline(
+            df=df,
+            config=config,
+        )
+
     except Exception as e:
         logger.exception(f"Pipeline failed: {e}")
         print(f"Pipeline failed: {e}")

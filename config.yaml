@@ -1,7 +1,8 @@
 # This file is used to set up the parameters for data loading, logging, and other settings.
 
 data_source:
-  path: "./data/raw/opiod_raw_data.csv" # Relative or absolute path to data file (update as needed)
+  raw_path: "./data/raw/opiod_raw_data.csv" # Relative or absolute path to data file
+  processed_path: "./data/processed/opiod_processed_data.csv" # Path to save processed data
   type: "csv"                      # Data file type: 'csv' or 'excel'
   sheet_name: "Sheet1"             # Only used if type == 'excel'
   delimiter: ","                   # Only used if type == 'csv'
@@ -13,3 +14,68 @@ logging:
   log_file: "./logs/main.log"    # File path for log output
   format: "%(asctime)s - %(levelname)s - %(name)s - %(message)s"  # Log message format
   datefmt: "%Y-%m-%d %H:%M:%S"          # Date format for logs
+
+data_split:
+  test_size: 0.2
+  valid_size: 0.2
+  random_state: 42
+  train_path: data/splits/train.csv
+  valid_path: data/splits/valid.csv
+  test_path: data/splits/test.csv
+
+model:
+  active: decision_tree  # Options: decision_tree, logistic_regression, random_forest
+
+  decision_tree:
+    save_path: models/decision_tree.pkl
+    params:
+      max_depth: 4
+      random_state: 42
+
+  logistic_regression:
+    save_path: models/logistic_regression.pkl
+    params:
+      penalty: l2
+      solver: lbfgs
+      random_state: 42
+      max_iter: 200
+
+  random_forest:
+    save_path: models/random_forest.pkl
+    params:
+      n_estimators: 100
+      max_depth: 5
+      random_state: 42
+
+features:
+  # List all columns to use as features (update dynamically if engineered features added)
+  - rx_ds
+  - A
+  - B
+  - C
+  - D
+  - E
+  - F
+  - H
+  - I
+  - J
+  - K
+  - L
+  - M
+  - N
+  - R
+  - S
+  - T
+  - V
+
+target: OD
+
+metrics:
+  - Accuracy
+  - Precision (PPV)
+  - Recall (Sensitivity)
+  - Specificity
+  - F1 Score
+  - Negative Predictive Value (NPV)
+  - ROC AUC
+
