@@ -200,3 +200,34 @@ def run_model_pipeline(
     print("Test metrics:", results_test)
 
     save_model(model, save_path)
+
+
+if __name__ == "__main__":
+    import sys
+    import yaml
+    import pandas as pd
+    import logging
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(levelname)s - %(name)s - %(message)s"
+    )
+    # Allow custom config/data path for CLI use
+    config_path = sys.argv[1] if len(sys.argv) > 1 else "config.yaml"
+    data_path = None
+
+    # Load config
+    with open(config_path, "r") as f:
+        config = yaml.safe_load(f)
+
+    # Prefer to use data_loader if available
+    try:
+        from src.data_load.data_loader import get_data
+        df = get_data(config_path=config_path, data_stage="processed")
+    except ImportError:
+        # fallback: direct pandas load
+        data_path = config["data_source"]["processed_path"]
+        df = pd.read_csv(data_path)
+
+    # Run the model pipeline
+    run_model_pipeline(df, config)
