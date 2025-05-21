@@ -216,9 +216,6 @@ def run_model_pipeline(
     logger.info(f"Validation set metrics: {formatted_results_valid}")
     logger.info(f"Test set metrics: {formatted_results_test}")
 
-    logger.info(f"Validation metrics: {formatted_results_valid}")
-    logger.info(f"Test metrics: {formatted_results_test}")
-
     save_model(model, save_path)
 
 
