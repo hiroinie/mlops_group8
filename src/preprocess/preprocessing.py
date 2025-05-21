@@ -27,16 +27,14 @@ def rename_columns(df: pd.DataFrame, rename_map: dict) -> pd.DataFrame:
 
 
 def bucketize_column(df: pd.DataFrame, col: str, n_buckets: int, bucket_labels, one_hot: bool) -> pd.DataFrame:
-    """
-    Bucketize a column using quantiles and one-hot encode if specified.
-    """
     df = df.copy()
     bucket_col = f"{col}_bucket"
     df[bucket_col] = pd.qcut(df[col], q=n_buckets, labels=bucket_labels)
     logger.info(
         f"Bucketed '{col}' into {n_buckets} quantiles: {bucket_labels}")
     if one_hot:
-        dummies = pd.get_dummies(df[bucket_col], prefix=bucket_col)
+        # <--- Ensures int type
+        dummies = pd.get_dummies(df[bucket_col], prefix=bucket_col, dtype=int)
         df = pd.concat([df, dummies], axis=1)
         logger.info(f"One-hot encoded '{bucket_col}'")
         df.drop([bucket_col], axis=1, inplace=True)
@@ -104,11 +102,25 @@ def run_preprocessing_pipeline(df: pd.DataFrame, config: Dict) -> pd.DataFrame:
 if __name__ == "__main__":
     import sys
     import yaml
+    import pandas as pd
+    import logging
+
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s - %(levelname)s - %(name)s - %(message)s"
     )
-    df = pd.read_csv(sys.argv[1])
-    with open(sys.argv[2], "r") as f:
+
+    # Check for correct usage
+    if len(sys.argv) < 3:
+        logging.error("Usage: python -m src.preprocess.preprocessing <raw_data.csv> <config.yaml>")
+        logging.error("Example: python -m src.preprocess.preprocessing data/raw/opiod_raw_data.csv config.yaml")
+        sys.exit(1)
+
+    raw_data_path = sys.argv[1]
+    config_path = sys.argv[2]
+
+    df = pd.read_csv(raw_data_path)
+    with open(config_path, "r") as f:
         config = yaml.safe_load(f)
+
     run_preprocessing_pipeline(df, config)

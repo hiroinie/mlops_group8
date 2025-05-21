@@ -170,6 +170,6 @@ if __name__ == "__main__":
     try:
         # By default, load raw
         df = get_data(data_stage="raw")
-        print(f"Data loaded successfully. Shape: {df.shape}")
+        logging.info(f"Data loaded successfully. Shape: {df.shape}")
     except Exception as e:
-        print(f"Failed to load data: {e}")
+        logging.exception(f"Failed to load data: {e}")

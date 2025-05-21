@@ -49,7 +49,11 @@ model:
 
 features:
   # List all columns to use as features (update dynamically if engineered features added)
-  - rx_ds
+  - rx_ds_norm
+  - rx_ds_bucket_Q1
+  - rx_ds_bucket_Q2
+  - rx_ds_bucket_Q3
+  - rx_ds_bucket_Q4
   - A
   - B
   - C

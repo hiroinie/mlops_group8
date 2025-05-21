@@ -164,6 +164,18 @@ def save_model(model, path: str):
     logger.info(f"Model saved to {path}")
 
 
+def format_metrics(metrics: dict, ndigits: int = 2) -> dict:
+    formatted = {}
+    for k, v in metrics.items():
+        if isinstance(v, (float, int)):
+            formatted[k] = round(float(v), ndigits)
+        elif hasattr(v, "item"):  # handles np.float64 and similar types
+            formatted[k] = round(float(v.item()), ndigits)
+        else:
+            formatted[k] = v
+    return formatted
+
+
 def run_model_pipeline(
     df: pd.DataFrame,
     config: Dict[str, Any],
@@ -175,6 +187,11 @@ def run_model_pipeline(
     target = config["target"]
     split_cfg = config["data_split"]
     metrics = config["metrics"]
+
+    missing = [col for col in features if col not in df.columns]
+    if missing:
+        logger.error(f"Missing features in processed data: {missing}")
+        raise ValueError(f"Missing features: {missing}")
 
     model_config = config["model"]
     active = model_config.get("active", "decision_tree")
@@ -193,11 +210,14 @@ def run_model_pipeline(
     results_valid = evaluate_model(model, X_valid, y_valid, metrics)
     results_test = evaluate_model(model, X_test, y_test, metrics)
 
-    logger.info(f"Validation set metrics: {results_valid}")
-    logger.info(f"Test set metrics: {results_test}")
+    formatted_results_valid = format_metrics(results_valid)
+    formatted_results_test = format_metrics(results_test)
 
-    print("Validation metrics:", results_valid)
-    print("Test metrics:", results_test)
+    logger.info(f"Validation set metrics: {formatted_results_valid}")
+    logger.info(f"Test set metrics: {formatted_results_test}")
+
+    logger.info(f"Validation metrics: {formatted_results_valid}")
+    logger.info(f"Test metrics: {formatted_results_test}")
 
     save_model(model, save_path)
 

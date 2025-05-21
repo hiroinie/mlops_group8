@@ -110,13 +110,13 @@ def main():
     try:
         config = load_config(args.config)
     except Exception as e:
-        print(f"Failed to load config: {e}", file=sys.stderr)
+        logging.exception(f"Failed to load config: {e}")
         sys.exit(1)
 
     try:
         setup_logging(config.get("logging", {}))
     except Exception as e:
-        print(f"Failed to set up logging: {e}", file=sys.stderr)
+        logging.exception(f"Failed to set up logging: {e}")
         sys.exit(1)
 
     logger.info("Pipeline started")
@@ -128,22 +128,23 @@ def main():
         if df_raw is None or not hasattr(df_raw, "shape"):
             logger.error(
                 "Data loading failed: get_data did not return a valid DataFrame")
-            print("Data loading failed: get_data did not return a valid DataFrame")
+            logging.exception(
+                "Data loading failed: get_data did not return a valid DataFrame")
             sys.exit(1)
         logger.info(f"Raw data loaded successfully. Shape: {df_raw.shape}")
-        print(f"Raw data loaded. Shape: {df_raw.shape}")
+        logging.info(f"Raw data loaded. Shape: {df_raw.shape}")
 
         # Preprocess and overwrite processed data file
         df_processed = run_preprocessing_pipeline(df_raw, config)
         logger.info(f"Preprocessed data shape: {df_processed.shape}")
-        print(f"Preprocessed data shape: {df_processed.shape}")
+        logging.info(f"Preprocessed data shape: {df_processed.shape}")
 
         # Model pipeline runs on processed data
         run_model_pipeline(df=df_processed, config=config)
 
     except Exception as e:
         logger.exception(f"Pipeline failed: {e}")
-        print(f"Pipeline failed: {e}")
+        logging.exception(f"Pipeline failed: {e}")
         sys.exit(1)
 
     logger.info("Pipeline completed successfully")
