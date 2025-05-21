@@ -170,7 +170,6 @@ def run_model_pipeline(
     split_cfg = config["data_split"]
     metrics = config["metrics"]
 
-    # ====== NEW: Multi-model config handling ======
     model_config = config["model"]
     active = model_config.get("active", "decision_tree")
     active_model_cfg = model_config[active]
@@ -178,7 +177,6 @@ def run_model_pipeline(
     model_type = active
     params = active_model_cfg.get("params", {})
     save_path = active_model_cfg.get("save_path", "models/model.pkl")
-    # ==============================================
 
     X_train, X_valid, X_test, y_train, y_valid, y_test = split_and_save_data(
         df, features, target, split_cfg
