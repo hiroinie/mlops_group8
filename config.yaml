@@ -92,3 +92,6 @@ preprocessing:
     one_hot_encode_buckets: true    # set to false to skip dummy vars
     rename_columns:
       "rx ds": rx_ds                # key: old name, value: new name
+
+artifacts:
+  preprocessing_pipeline: models/preprocessing_pipeline.pkl

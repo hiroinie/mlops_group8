@@ -1,31 +1,25 @@
 """
 model.py
 
-This module provides utilities for building machine learning pipelines in an MLOps context.
-It supports data splitting (with saving to CSV), dynamic model selection and training
-(DecisionTreeClassifier, LogisticRegression, RandomForestClassifier), model evaluation
-with multiple metrics, and model persistence. The pipeline is configurable via a dictionary
-and is designed for reproducibility and integration into automated workflows.
-
-Handles data splitting, dynamic model selection/training, evaluation, persistence, and saving splits for MLOps pipelines.
-Supports DecisionTreeClassifier, LogisticRegression, and RandomForestClassifier via config.
+Leakage-proof, full MLOps pipeline:
+- Splits raw data first
+- Fits preprocessing (ColumnTransformer) on train set only, applies to val/test
+- Trains model, evaluates, and saves both model and preprocessing artifacts
 """
 
 import os
 import logging
 import pickle
-from typing import List, Dict, Any, Tuple
-
-import numpy as np
+from typing import List, Dict, Any
 import pandas as pd
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import (
-    accuracy_score, precision_score, recall_score, f1_score, roc_auc_score,
-    confusion_matrix
+    accuracy_score, precision_score, recall_score, f1_score, roc_auc_score, confusion_matrix
 )
+from src.preprocess.preprocessing import build_preprocessing_pipeline, rename_columns
 
 logger = logging.getLogger(__name__)
 
@@ -36,22 +30,12 @@ MODEL_REGISTRY = {
 }
 
 
-def split_and_save_data(
-    df: pd.DataFrame,
-    features: List[str],
-    target: str,
-    split_cfg: Dict[str, Any]
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """
-    Split DataFrame into train, validation, and test sets. Save splits as CSVs.
-    """
+def split_data(df: pd.DataFrame, features: List[str], target: str, split_cfg: Dict[str, Any]):
     X = df[features].values
     y = df[target].values
-
     test_size = split_cfg.get("test_size", 0.2)
     valid_size = split_cfg.get("valid_size", 0.2)
     random_state = split_cfg.get("random_state", 42)
-
     X_train, X_temp, y_train, y_temp = train_test_split(
         X, y, test_size=(test_size + valid_size), random_state=random_state, stratify=y
     )
@@ -59,40 +43,10 @@ def split_and_save_data(
     X_valid, X_test, y_valid, y_test = train_test_split(
         X_temp, y_temp, test_size=rel_valid, random_state=random_state, stratify=y_temp
     )
-
-    # Save splits as CSVs (with headers)
-    os.makedirs(os.path.dirname(split_cfg["train_path"]), exist_ok=True)
-    pd.DataFrame(X_train, columns=features).assign(
-        **{target: y_train}).to_csv(split_cfg["train_path"], index=False)
-    pd.DataFrame(X_valid, columns=features).assign(
-        **{target: y_valid}).to_csv(split_cfg["valid_path"], index=False)
-    pd.DataFrame(X_test, columns=features).assign(
-        **{target: y_test}).to_csv(split_cfg["test_path"], index=False)
-
-    logger.info(
-        f"Data split and saved: train={X_train.shape[0]}, valid={X_valid.shape[0]}, test={X_test.shape[0]}"
-    )
     return X_train, X_valid, X_test, y_train, y_valid, y_test
 
 
-def train_model(
-    X_train: np.ndarray,
-    y_train: np.ndarray,
-    model_type: str,
-    params: Dict[str, Any]
-):
-    """
-    Train specified model type using params.
-
-    Args:
-        X_train (np.ndarray): Training features.
-        y_train (np.ndarray): Training targets.
-        model_type (str): 'decision_tree', 'logistic_regression', or 'random_forest'.
-        params (dict): Model hyperparameters.
-
-    Returns:
-        Trained model instance.
-    """
+def train_model(X_train, y_train, model_type, params):
     if model_type not in MODEL_REGISTRY:
         raise ValueError(f"Unsupported model type: {model_type}")
     model_cls = MODEL_REGISTRY[model_type]
@@ -102,31 +56,12 @@ def train_model(
     return model
 
 
-def evaluate_model(
-    model,
-    X: np.ndarray,
-    y: np.ndarray,
-    metrics: List[str]
-) -> Dict[str, float]:
-    """
-    Evaluate model using specified metrics.
-
-    Args:
-        model: Trained model.
-        X (np.ndarray): Features.
-        y (np.ndarray): Ground truth.
-        metrics (List[str]): Metrics to compute.
-
-    Returns:
-        Dict[str, float]: Metric results.
-    """
+def evaluate_model(model, X, y, metrics):
     y_pred = model.predict(X)
     y_prob = model.predict_proba(X)[:, 1] if hasattr(
         model, "predict_proba") else None
-
     tn, fp, fn, tp = confusion_matrix(y, y_pred).ravel()
     results = {}
-
     for metric in metrics:
         metric_lower = metric.lower()
         if metric_lower == "accuracy":
@@ -150,18 +85,11 @@ def evaluate_model(
     return results
 
 
-def save_model(model, path: str):
-    """
-    Save model to disk using pickle.
-
-    Args:
-        model: Trained model.
-        path (str): File path to save model.
-    """
+def save_artifact(obj, path: str):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "wb") as f:
-        pickle.dump(model, f)
-    logger.info(f"Model saved to {path}")
+        pickle.dump(obj, f)
+    logger.info(f"Saved artifact to {path}")
 
 
 def format_metrics(metrics: dict, ndigits: int = 2) -> dict:
@@ -169,20 +97,19 @@ def format_metrics(metrics: dict, ndigits: int = 2) -> dict:
     for k, v in metrics.items():
         if isinstance(v, (float, int)):
             formatted[k] = round(float(v), ndigits)
-        elif hasattr(v, "item"):  # handles np.float64 and similar types
+        elif hasattr(v, "item"):
             formatted[k] = round(float(v.item()), ndigits)
         else:
             formatted[k] = v
     return formatted
 
 
-def run_model_pipeline(
-    df: pd.DataFrame,
-    config: Dict[str, Any],
-):
-    """
-    Complete model pipeline: splits data, trains model, evaluates, saves splits and model.
-    """
+def run_model_pipeline(df: pd.DataFrame, config: Dict[str, Any]):
+    # Rename columns before splitting (if needed)
+    pp_cfg = config.get("preprocessing", {}).get("rx_ds", {})
+    rename_map = pp_cfg.get("rename_columns", {})
+    df = rename_columns(df, rename_map)
+
     features = config["features"]
     target = config["target"]
     split_cfg = config["data_split"]
@@ -193,58 +120,56 @@ def run_model_pipeline(
         logger.error(f"Missing features in processed data: {missing}")
         raise ValueError(f"Missing features: {missing}")
 
+    # Split data before any fitting (no leakage)
+    X_train, X_valid, X_test, y_train, y_valid, y_test = split_data(
+        df, features, target, split_cfg)
+
+    # Build and fit pipeline on training set only
+    pipeline = build_preprocessing_pipeline(config, features)
+    pipeline.fit(X_train)
+
+    # Transform all splits
+    X_train_prep = pipeline.transform(X_train)
+    X_valid_prep = pipeline.transform(X_valid)
+    X_test_prep = pipeline.transform(X_test)
+
+    # Train model
     model_config = config["model"]
     active = model_config.get("active", "decision_tree")
     active_model_cfg = model_config[active]
-
     model_type = active
     params = active_model_cfg.get("params", {})
     save_path = active_model_cfg.get("save_path", "models/model.pkl")
+    model = train_model(X_train_prep, y_train, model_type, params)
 
-    X_train, X_valid, X_test, y_train, y_valid, y_test = split_and_save_data(
-        df, features, target, split_cfg
-    )
+    # Evaluate
+    results_valid = evaluate_model(model, X_valid_prep, y_valid, metrics)
+    results_test = evaluate_model(model, X_test_prep, y_test, metrics)
+    logger.info(f"Validation set metrics: {format_metrics(results_valid)}")
+    logger.info(f"Test set metrics: {format_metrics(results_test)}")
 
-    model = train_model(X_train, y_train, model_type, params)
-
-    results_valid = evaluate_model(model, X_valid, y_valid, metrics)
-    results_test = evaluate_model(model, X_test, y_test, metrics)
-
-    formatted_results_valid = format_metrics(results_valid)
-    formatted_results_test = format_metrics(results_test)
-
-    logger.info(f"Validation set metrics: {formatted_results_valid}")
-    logger.info(f"Test set metrics: {formatted_results_test}")
-
-    save_model(model, save_path)
+    # Save model and pipeline artifacts
+    save_artifact(model, save_path)
+    pipe_path = config.get("artifacts", {}).get(
+        "preprocessing_pipeline", "models/preprocessing_pipeline.pkl")
+    save_artifact(pipeline, pipe_path)
 
 
+# CLI for standalone training (optional)
 if __name__ == "__main__":
     import sys
     import yaml
-    import pandas as pd
-    import logging
 
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s - %(levelname)s - %(name)s - %(message)s"
     )
-    # Allow custom config/data path for CLI use
-    config_path = sys.argv[1] if len(sys.argv) > 1 else "config.yaml"
-    data_path = None
-
-    # Load config
+    if len(sys.argv) < 3:
+        logger.error(
+            "Usage: python -m src.model.model <raw_data.csv> <config.yaml>")
+        sys.exit(1)
+    raw_data_path, config_path = sys.argv[1:3]
+    df = pd.read_csv(raw_data_path)
     with open(config_path, "r") as f:
         config = yaml.safe_load(f)
-
-    # Prefer to use data_loader if available
-    try:
-        from src.data_load.data_loader import get_data
-        df = get_data(config_path=config_path, data_stage="processed")
-    except ImportError:
-        # fallback: direct pandas load
-        data_path = config["data_source"]["processed_path"]
-        df = pd.read_csv(data_path)
-
-    # Run the model pipeline
     run_model_pipeline(df, config)

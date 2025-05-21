@@ -11,8 +11,10 @@ Performs all preprocessing on the opioid data for MLOps pipelines:
 
 import os
 import logging
-from typing import Dict
+from typing import Dict, List
 import pandas as pd
+from sklearn.pipeline import Pipeline
+from sklearn.compose import ColumnTransformer
 from sklearn.preprocessing import KBinsDiscretizer, MinMaxScaler, StandardScaler
 
 logger = logging.getLogger(__name__)
@@ -28,83 +30,73 @@ def rename_columns(df: pd.DataFrame, rename_map: dict) -> pd.DataFrame:
     return df
 
 
-def run_preprocessing_pipeline(df: pd.DataFrame, config: Dict) -> pd.DataFrame:
+def build_preprocessing_pipeline(config: Dict, features: List[str]) -> ColumnTransformer:
     """
-    Apply all preprocessing steps as specified in config.
-    Saves the processed dataframe to processed_path from config.
-    Uses only sklearn out-of-the-box transformers.
+    Build a full ColumnTransformer for all features.
+    Only rx_ds is bucketized/normalized, others pass through.
     """
     pp_cfg = config.get("preprocessing", {}).get("rx_ds", {})
-
-    # --- 1. Column renaming (before pipeline)
-    rename_map = pp_cfg.get("rename_columns", {})
-    df = rename_columns(df, rename_map)
-
-    # --- 2. KBinsDiscretizer for quantile buckets (out-of-the-box)
-    if pp_cfg.get("bucketize", True):
-        n_buckets = pp_cfg.get("n_buckets", 4)
-        strategy = "quantile"
-        kbd = KBinsDiscretizer(
-            n_bins=n_buckets, encode='onehot-dense', strategy=strategy)
-        bucketized = kbd.fit_transform(df[['rx_ds']])
-        bucket_cols = [f"rx_ds_bucket_Q{i+1}" for i in range(n_buckets)]
-        bucket_df = pd.DataFrame(
-            bucketized, columns=bucket_cols, index=df.index)
-        df = pd.concat([df, bucket_df], axis=1)
-        logger.info(
-            f"Bucketized 'rx_ds' into {n_buckets} quantile bins and one-hot encoded")
-
-    # --- 3. Normalization
+    n_buckets = pp_cfg.get("n_buckets", 4)
     normalization = pp_cfg.get("normalization", "minmax")
-    if normalization:
-        if normalization == "minmax":
-            scaler = MinMaxScaler()
-            df['rx_ds_norm'] = scaler.fit_transform(df[['rx_ds']])
-            logger.info(f"Normalized 'rx_ds' using min-max scaling")
-        elif normalization == "zscore":
-            scaler = StandardScaler()
-            df['rx_ds_norm'] = scaler.fit_transform(df[['rx_ds']])
-            logger.info(f"Normalized 'rx_ds' using z-score scaling")
-        else:
-            raise ValueError(f"Unknown normalization method: {normalization}")
+    rx_ds_pipeline = []
+    # Quantile bucketing + one-hot encoding for rx_ds
+    rx_ds_pipeline.append(
+        ('bucketize', KBinsDiscretizer(n_bins=n_buckets,
+         encode='onehot-dense', strategy='quantile'))
+    )
+    # Normalization after bucketing for rx_ds
+    if normalization == "minmax":
+        rx_ds_pipeline.append(('normalize', MinMaxScaler()))
+    elif normalization == "zscore":
+        rx_ds_pipeline.append(('normalize', StandardScaler()))
+    else:
+        raise ValueError(f"Unknown normalization method: {normalization}")
 
-    # --- 4. Save to processed_path
-    processed_path = config["data_source"].get("processed_path")
-    if not processed_path:
-        logger.error("No processed_path found in config['data_source']")
-        raise ValueError("No processed_path in config['data_source']")
-    os.makedirs(os.path.dirname(processed_path), exist_ok=True)
-    df.to_csv(processed_path, index=False)
-    logger.info(f"Saved processed data to {processed_path}")
+    # All other features just pass through
+    other_features = [col for col in features if col != 'rx_ds']
 
-    return df
+    # Compose ColumnTransformer
+    ct = ColumnTransformer(
+        transformers=[
+            ('rx_ds_pipeline', Pipeline(rx_ds_pipeline), ['rx_ds']),
+            ('passthrough', 'passthrough', other_features)
+        ]
+    )
+    return ct
 
 
-# CLI for standalone use
+# CLI for standalone preprocessing and artifact saving (for manual/debug use)
 if __name__ == "__main__":
     import sys
     import yaml
-    import pandas as pd
-    import logging
+    import pickle
 
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s - %(levelname)s - %(name)s - %(message)s"
     )
 
-    # Check for correct usage
-    if len(sys.argv) < 3:
-        logging.error(
-            "Usage: python -m src.preprocess.preprocessing <raw_data.csv> <config.yaml>")
-        logging.error(
-            "Example: python -m src.preprocess.preprocessing data/raw/opiod_raw_data.csv config.yaml")
+    if len(sys.argv) < 4:
+        logger.error(
+            "Usage: python -m src.preprocess.preprocessing <raw_data.csv> <config.yaml> <out_pipeline.pkl>")
         sys.exit(1)
 
-    raw_data_path = sys.argv[1]
-    config_path = sys.argv[2]
-
+    raw_data_path, config_path, pipeline_path = sys.argv[1:4]
     df = pd.read_csv(raw_data_path)
     with open(config_path, "r") as f:
         config = yaml.safe_load(f)
 
-    run_preprocessing_pipeline(df, config)
+    features = config["features"]
+    rename_map = config.get("preprocessing", {}).get(
+        "rx_ds", {}).get("rename_columns", {})
+    df = rename_columns(df, rename_map)
+
+    # Fit pipeline on whole data (for demo—real pipeline fits only on train set)
+    pipe = build_preprocessing_pipeline(config, features)
+    pipe.fit(df[features])
+
+    # Save fitted pipeline
+    os.makedirs(os.path.dirname(pipeline_path), exist_ok=True)
+    with open(pipeline_path, "wb") as f:
+        pickle.dump(pipe, f)
+    logger.info(f"Fitted and saved pipeline to {pipeline_path}")
