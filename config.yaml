@@ -118,3 +118,98 @@ artifacts:
   preprocessing_pipeline: models/preprocessing_pipeline.pkl
   metrics_path: models/metrics.json
 
+data_validation:
+  enabled: true
+  action_on_error: "raise"  # options: raise, warn
+  report_path: "logs/validation_report.json"
+  schema:
+    columns:
+      - name: "ID"
+        dtype: "int"
+        required: true
+        min: 1
+      - name: "OD"
+        dtype: "int"
+        required: true
+        allowed_values: [0, 1]
+      - name: "Low_inc"
+        dtype: "int"
+        required: true
+        allowed_values: [0, 1]
+      - name: "SURG"
+        dtype: "int"
+        required: true
+        allowed_values: [0, 1]
+      - name: "rx ds"
+        dtype: "int"
+        required: true
+        min: 0
+        max: 2000    # Set upper bound based on domain knowledge; adjust as needed
+      - name: "A"
+        dtype: "int"
+        required: true
+        allowed_values: [0, 1]
+      - name: "B"
+        dtype: "int"
+        required: true
+        allowed_values: [0, 1]
+      - name: "C"
+        dtype: "int"
+        required: true
+        allowed_values: [0, 1]
+      - name: "D"
+        dtype: "int"
+        required: true
+        allowed_values: [0, 1]
+      - name: "E"
+        dtype: "int"
+        required: true
+        allowed_values: [0, 1]
+      - name: "F"
+        dtype: "int"
+        required: true
+        allowed_values: [0, 1]
+      - name: "H"
+        dtype: "int"
+        required: true
+        allowed_values: [0, 1]
+      - name: "I"
+        dtype: "int"
+        required: true
+        allowed_values: [0, 1]
+      - name: "J"
+        dtype: "int"
+        required: true
+        allowed_values: [0, 1]
+      - name: "K"
+        dtype: "int"
+        required: true
+        allowed_values: [0, 1]
+      - name: "L"
+        dtype: "int"
+        required: true
+        allowed_values: [0, 1]
+      - name: "M"
+        dtype: "int"
+        required: true
+        allowed_values: [0, 1]
+      - name: "N"
+        dtype: "int"
+        required: true
+        allowed_values: [0, 1]
+      - name: "R"
+        dtype: "int"
+        required: true
+        allowed_values: [0, 1]
+      - name: "S"
+        dtype: "int"
+        required: true
+        allowed_values: [0, 1]
+      - name: "T"
+        dtype: "int"
+        required: true
+        allowed_values: [0, 1]
+      - name: "V"
+        dtype: "int"
+        required: true
+        allowed_values: [0, 1]

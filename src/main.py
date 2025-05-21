@@ -16,6 +16,8 @@ import os
 import yaml
 from src.data_load.data_loader import get_data
 from src.model.model import run_model_pipeline
+from src.data_validation.data_validator import validate_data
+
 
 logger = logging.getLogger(__name__)
 
@@ -84,10 +86,17 @@ def main():
                     "Data loading failed: get_data did not return a valid DataFrame")
                 sys.exit(1)
             logger.info(f"Raw data loaded successfully. Shape: {df_raw.shape}")
+
+            # Validate the data
+            validate_data(df_raw, config)
+
         if args.stage in ["all", "train"]:
             if args.stage == "train":
                 df_raw = get_data(config_path=args.config,
                                   env_path=args.env, data_stage="raw")
+                validate_data(df_raw, config)
+
+            # Run the model pipeline
             run_model_pipeline(df=df_raw, config=config)
     except Exception as e:
         logger.exception(f"Pipeline failed: {e}")
