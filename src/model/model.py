@@ -1,6 +1,12 @@
 """
 model.py
 
+This module provides utilities for building machine learning pipelines in an MLOps context.
+It supports data splitting (with saving to CSV), dynamic model selection and training
+(DecisionTreeClassifier, LogisticRegression, RandomForestClassifier), model evaluation
+with multiple metrics, and model persistence. The pipeline is configurable via a dictionary
+and is designed for reproducibility and integration into automated workflows.
+
 Handles data splitting, dynamic model selection/training, evaluation, persistence, and saving splits for MLOps pipelines.
 Supports DecisionTreeClassifier, LogisticRegression, and RandomForestClassifier via config.
 """

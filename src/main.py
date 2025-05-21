@@ -78,28 +78,39 @@ def load_config(config_path: str = "config.yaml") -> dict:
 
 def main():
     """
-    Parse CLI arguments, load configuration and environment,
-    set up logging, and run the data loading pipeline.
+    Main entry point for the MLOps project pipeline.
+    This function parses command-line arguments to configure the pipeline, loads configuration and environment variables,
+    sets up logging, loads the specified data stage (raw or processed), and runs the model pipeline. It handles errors
+    at each stage, logging failures and exiting gracefully if necessary.
+    Command-line Arguments:
+        --config: Path to the configuration YAML file (default: "config.yaml").
+        --env: Path to an optional .env file for secrets or environment variables (default: ".env").
+        --data_stage: Which data stage to load: "raw" or "processed" (default: "processed").
+    Workflow:
+        1. Parse arguments and load configuration.
+        2. Set up logging as specified in the configuration.
+        3. Load data according to the specified stage.
+        4. Run the model pipeline using the loaded data and configuration.
+        5. Log progress and handle exceptions at each step.
     Exits with status code 1 on failure.
     """
-    # Helpful if I work with different config files Dev vs. Prod
+    # Set up command-line argument parsing
     parser = argparse.ArgumentParser(
         description="Main entry point for the MLOps project pipeline")
     parser.add_argument("--config", type=str, default="config.yaml",
                         help="Path to the configuration YAML file")
     parser.add_argument("--env", type=str, default=".env",
-                        help="Path to an optional .env file for secrets or"
-                        " environment variables")
+                        help="Path to an optional .env file for secrets or environment variables")
+    parser.add_argument("--data_stage", type=str, default="processed",
+                        help="Which data stage to load: raw or processed")
     args = parser.parse_args()
 
-    # Load configuration
     try:
         config = load_config(args.config)
     except Exception as e:
         print(f"Failed to load config: {e}", file=sys.stderr)
         sys.exit(1)
 
-    # Set up logging
     try:
         setup_logging(config.get("logging", {}))
     except Exception as e:
@@ -109,30 +120,19 @@ def main():
     logger.info("Pipeline started")
 
     try:
-        df = get_data(config_path=args.config, env_path=args.env)
-        # Validate DataFrame output
+        # By default, load processed data for modeling
+        df = get_data(config_path=args.config, env_path=args.env,
+                      data_stage=args.data_stage)
         if df is None or not hasattr(df, "shape"):
             logger.error(
-                "Data loading failed: get_data did not return a valid"
-                " DataFrame")
-            print("Data loading failed: get_data did not return a valid"
-                  " DataFrame")
+                "Data loading failed: get_data did not return a valid DataFrame")
+            print("Data loading failed: get_data did not return a valid DataFrame")
             sys.exit(1)
-        logger.info(f"Data loaded successfully. Shape: {df.shape}")
-        print(f"Data loaded. Shape: {df.shape}")
-    except Exception as e:
-        logger.exception(f"Pipeline failed: {e}")
-        print(f"Pipeline failed: {e}")
-        sys.exit(1)
-
         logger.info(f"Data loaded successfully. Shape: {df.shape}")
         print(f"Data loaded. Shape: {df.shape}")
 
         # Run the model pipeline and save splits/model
-        run_model_pipeline(
-            df=df,
-            config=config,
-        )
+        run_model_pipeline(df=df, config=config)
 
     except Exception as e:
         logger.exception(f"Pipeline failed: {e}")
