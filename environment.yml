@@ -1,4 +1,4 @@
-name: mlops_project  # Name of the conda environment
+name: mlops_group8  # Name of the conda environment
 
 channels:
   - conda-forge  # Community channel with most up-to-date packages
