@@ -9,6 +9,7 @@ Leakage-proof, end-to-end MLOps pipeline:
 
 import os
 import logging
+import json
 import pickle
 from typing import Dict, Any
 import pandas as pd
@@ -20,6 +21,8 @@ from sklearn.metrics import (
     accuracy_score, precision_score, recall_score, f1_score, roc_auc_score, confusion_matrix
 )
 from src.preprocess.preprocessing import build_preprocessing_pipeline, get_output_feature_names, run_preprocessing_pipeline
+from src.evaluation.evaluator import evaluate_classification
+
 
 logger = logging.getLogger(__name__)
 
@@ -103,6 +106,15 @@ def run_model_pipeline(df: pd.DataFrame, config: Dict[str, Any]):
     X_valid, X_test, y_valid, y_test = train_test_split(
         X_temp, y_temp, test_size=rel_valid, random_state=random_state, stratify=y_temp
     )
+    # --- Save raw data splits ---
+    splits_dir = config.get("artifacts", {}).get("splits_dir", "data/splits")
+    os.makedirs(splits_dir, exist_ok=True)
+    X_train.assign(
+        **{target: y_train}).to_csv(os.path.join(splits_dir, "train.csv"), index=False)
+    X_valid.assign(
+        **{target: y_valid}).to_csv(os.path.join(splits_dir, "valid.csv"), index=False)
+    X_test.assign(**{target: y_test}
+                  ).to_csv(os.path.join(splits_dir, "test.csv"), index=False)
 
     # 2. Fit preprocessing pipeline on X_train, transform all splits
     preprocessor = build_preprocessing_pipeline(config)
@@ -125,6 +137,17 @@ def run_model_pipeline(df: pd.DataFrame, config: Dict[str, Any]):
     X_valid_pp = X_valid_pp[input_features]
     X_test_pp = X_test_pp[input_features]
 
+    # Save processed data splits
+    processed_dir = config.get("artifacts", {}).get(
+        "processed_dir", "data/processed")
+    os.makedirs(processed_dir, exist_ok=True)
+    X_train_pp.assign(**{target: y_train}).to_csv(
+        os.path.join(processed_dir, "train_processed.csv"), index=False)
+    X_valid_pp.assign(**{target: y_valid}).to_csv(
+        os.path.join(processed_dir, "valid_processed.csv"), index=False)
+    X_test_pp.assign(
+        **{target: y_test}).to_csv(os.path.join(processed_dir, "test_processed.csv"), index=False)
+
     # Save preprocessing pipeline artifact
     preproc_path = config.get("artifacts", {}).get(
         "preprocessing_pipeline", "models/preprocessing_pipeline.pkl")
@@ -136,29 +159,47 @@ def run_model_pipeline(df: pd.DataFrame, config: Dict[str, Any]):
     active_model_cfg = model_config[active]
     model_type = active
     params = active_model_cfg.get("params", {})
-    save_path = active_model_cfg.get("save_path", "models/model.pkl")
     model = train_model(X_train_pp.values, y_train, model_type, params)
 
-    # Evaluate
-    metrics = config["metrics"]
-    results_valid = evaluate_model(model, X_valid_pp.values, y_valid, metrics)
-    results_test = evaluate_model(model, X_test_pp.values, y_test, metrics)
-    formatted_results_valid = format_metrics(results_valid)
-    formatted_results_test = format_metrics(results_test)
-    logger.info(f"Validation set metrics: {formatted_results_valid}")
-    logger.info(f"Test set metrics: {formatted_results_test}")
+    # Save model artifact
+    model_path = config.get("artifacts", {}).get(
+        "model_path", "models/model.pkl")
+    save_artifact(model, model_path)
 
-    # Save model and metrics
-    save_artifact(model, save_path)
+    # Evaluate and log/save metrics using evaluation.py
+    artifacts_cfg = config.get("artifacts", {})
+    metrics_path = artifacts_cfg.get("metrics_path", "models/metrics.json")
+
+    results_valid = evaluate_classification(
+        model, X_valid_pp.values, y_valid, config, split="validation")
+    results_test = evaluate_classification(
+        model, X_test_pp.values, y_test,  config, split="test")
+
+    def round_metrics(metrics_dict, ndigits=2):
+        rounded = {}
+        for k, v in metrics_dict.items():
+            if isinstance(v, dict):  # For nested dicts (e.g., Confusion Matrix)
+                rounded[k] = {ik: (round(iv, ndigits) if isinstance(
+                    iv, float) else iv) for ik, iv in v.items()}
+            elif isinstance(v, float):
+                rounded[k] = round(v, ndigits)
+            else:
+                rounded[k] = v
+        return rounded
+
+    validation_rounded = round_metrics(results_valid)
+    test_rounded = round_metrics(results_test)
+
     metrics_path = config.get("artifacts", {}).get(
         "metrics_path", "models/metrics.json")
-    import json
+
+    # Save both splits' metrics as one artifact
     os.makedirs(os.path.dirname(metrics_path), exist_ok=True)
     with open(metrics_path, "w") as f:
         json.dump({
-            "validation": formatted_results_valid,
-            "test": formatted_results_test
-        }, f)
+            "validation": validation_rounded,
+            "test": test_rounded
+        }, f, indent=2)
     logger.info(f"Metrics saved to {metrics_path}")
 
 
