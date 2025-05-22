@@ -13,6 +13,9 @@ dependencies:
   - pytest            # Testing framework for robust, maintainable code
   - pytest-dotenv     # Load environment variables from .env files in pytest
   - scikit-learn      # Machine learning library for model training and evaluation
+  - matplotlib        # add
+  - seaborn           # add
+  - scipy             # add
   - pip               # Allows pip-only packages to be installed below
 
   - pip:
