@@ -85,3 +85,14 @@ def test_load_data_no_path(monkeypatch):
     monkeypatch.setattr(data_loader, "load_config", lambda _: config)
     with pytest.raises(ValueError):
         data_loader.get_data(config_path="dummy.yaml", env_path=None)
+
+def test_excel_missing_sheet(monkeypatch):
+    """
+    Test: Data loader should raise ValueError if specified sheet_name does not exist in the Excel file.
+    """
+    config = dict(EXCEL_CONFIG)
+    config["data_source"]["sheet_name"] = "NonexistentSheet"
+    monkeypatch.setattr(data_loader, "load_config", lambda _: config)
+    with pytest.raises(ValueError):
+        data_loader.get_data(config_path="dummy.yaml", env_path=None)
+     

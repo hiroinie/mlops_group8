@@ -48,13 +48,15 @@ def load_data(
         if file_type == "csv":
             df = pd.read_csv(path, delimiter=delimiter,
                              header=header, encoding=encoding)
+            
         elif file_type == "excel":
-            df = pd.read_excel(path, sheet_name=sheet_name,
-                               header=header, engine="openpyxl")
-            if isinstance(df, dict):
-                raise ValueError(
-                    "Multiple sheets detected in Excel file. Please specify a single 'sheet_name' in the configuration."
-                )
+            # Check available sheets before trying to load
+            xls = pd.ExcelFile(path, engine="openpyxl")
+            if sheet_name not in xls.sheet_names:
+                logger.error(f"Sheet '{sheet_name}' not found in Excel file. Available sheets: {xls.sheet_names}")
+                raise ValueError(f"Sheet '{sheet_name}' not found in Excel file. Available sheets: {xls.sheet_names}")
+            df = pd.read_excel(xls, sheet_name=sheet_name, header=header)
+
         else:
             logger.error(f"Unsupported file type: {file_type}")
             raise ValueError(f"Unsupported file type: {file_type}")
