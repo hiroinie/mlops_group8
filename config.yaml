@@ -1,10 +1,10 @@
 # This file is used to set up the parameters for data loading, logging, and other settings.
 
 data_source:
-  raw_path: "./data/raw/opiod_raw_data.csv" # Relative or absolute path to data file
+  raw_path: "data/raw/Songs_2025.xlsx" # Relative or absolute path to data file
   processed_path: "./data/processed/opiod_processed_data.csv" # Path to save processed data
-  type: "csv"                      # Data file type: 'csv' or 'excel'
-  sheet_name: "Sheet1"             # Only used if type == 'excel'
+  type: "excel"                      # Data file type: 'csv' or 'excel'
+  sheet_name: "spotify songs"             # Only used if type == 'excel'
   delimiter: ","                   # Only used if type == 'csv'
   header: 0                        # Row number to use as column names (0-indexed), update if needed
   encoding: "utf-8"                # File encoding (utf-8 covers most cases)
