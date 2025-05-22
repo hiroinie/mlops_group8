@@ -115,7 +115,6 @@ preprocessing:
     one_hot_encode_buckets: true
 
 artifacts:
-  model_path: models/model.pkl
   metrics_path: models/metrics.json
   preprocessing_pipeline: models/preprocessing_pipeline.pkl
   splits_dir: data/splits

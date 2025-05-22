@@ -166,6 +166,10 @@ def run_model_pipeline(df: pd.DataFrame, config: Dict[str, Any]):
         "model_path", "models/model.pkl")
     save_artifact(model, model_path)
 
+    active = model_config.get("active", "decision_tree")
+    algo_model_path = model_config.get(active, {}).get("save_path", f"models/{active}.pkl")
+    save_artifact(model, algo_model_path)
+
     # Evaluate and log/save metrics using evaluation.py
     artifacts_cfg = config.get("artifacts", {})
     metrics_path = artifacts_cfg.get("metrics_path", "models/metrics.json")

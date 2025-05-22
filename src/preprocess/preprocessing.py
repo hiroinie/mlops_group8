@@ -8,9 +8,11 @@ Leakage-proof, sklearn Pipeline-based preprocessing:
 """
 
 import logging
-from typing import Dict, List
+from typing import Dict
 import pandas as pd
 from sklearn.pipeline import Pipeline
+from sklearn.base import BaseEstimator, TransformerMixin
+from sklearn.compose import ColumnTransformer
 from sklearn.preprocessing import (
     KBinsDiscretizer,
     MinMaxScaler,
@@ -19,7 +21,6 @@ from sklearn.preprocessing import (
     OrdinalEncoder
 )
 from sklearn.impute import SimpleImputer
-from sklearn.compose import ColumnTransformer
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +30,19 @@ def rename_columns(df: pd.DataFrame, rename_map: dict) -> pd.DataFrame:
         df = df.rename(columns=rename_map)
         logger.info(f"Renamed columns: {rename_map}")
     return df
+
+
+class ColumnRenamer(BaseEstimator, TransformerMixin):
+    """Sklearn-compatible column renamer"""
+
+    def __init__(self, rename_map: dict | None = None):
+        self.rename_map = rename_map or {}
+
+    def fit(self, X, y=None):
+        return self                      # no learning
+
+    def transform(self, X):
+        return X.rename(columns=self.rename_map, inplace=False)
 
 
 def build_preprocessing_pipeline(config: Dict) -> Pipeline:
@@ -100,7 +114,15 @@ def build_preprocessing_pipeline(config: Dict) -> Pipeline:
     col_transform = ColumnTransformer(
         transformers, remainder="drop", verbose_feature_names_out=False
     )
-    pipeline = Pipeline([("col_transform", col_transform)])
+
+    renamer = ColumnRenamer(pp_cfg.get("rename_columns", {}))
+
+    pipeline = Pipeline(
+        steps=[
+            ("rename", renamer),          # new first step
+            ("col_transform", col_transform),
+        ]
+    )
     return pipeline
 
 

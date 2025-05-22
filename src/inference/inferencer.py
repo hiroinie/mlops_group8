@@ -1,105 +1,138 @@
 """
-inference.py
+inferencer.py
 
-Perform batch inference using saved preprocessing pipeline and trained model.
-- Loads pipeline and model from config.yaml paths
-- Processes raw input data (CSV)
-- Outputs predictions (class + probability) to CSV
+Batch inference entry point.
+
+Usage
+-----
+python -m src.inference.inferencer \
+    data/inference/new_data.csv config.yaml data/inference/output_predictions.csv
 """
+
+from __future__ import annotations
 
 import argparse
 import logging
-import os
-import sys
-import pandas as pd
 import pickle
+import sys
+from pathlib import Path
+
+import pandas as pd
 import yaml
 
-
-def load_artifact(path, artifact_type="object"):
-    """Load a pickled artifact (pipeline/model) from disk."""
-    if not os.path.isfile(path):
-        raise FileNotFoundError(
-            f"{artifact_type.capitalize()} not found: {path}")
-    with open(path, "rb") as f:
-        return pickle.load(f)
+from src.preprocess.preprocessing import get_output_feature_names
 
 
-def setup_logging():
+logger = logging.getLogger(__name__)
+
+
+# ───────────────────────────────
+# helper to load pickled artefacts
+# ───────────────────────────────
+def _load_pickle(path: str, label: str):
+    p = Path(path)
+    if not p.is_file():
+        raise FileNotFoundError(f"{label} not found: {path}")
+    with p.open("rb") as fh:
+        return pickle.load(fh)
+
+
+def _setup_logging():
     logging.basicConfig(
         level=logging.INFO,
-        format="%(asctime)s - %(levelname)s - %(name)s - %(message)s"
+        format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
     )
 
 
-def run_inference(config_path, input_path, output_path):
-    setup_logging()
-    logger = logging.getLogger(__name__)
+# ───────────────────────────────
+# core routine
+# ───────────────────────────────
+def run_inference(input_csv: str, config_yaml: str, output_csv: str) -> None:
+    _setup_logging()
 
-    # Load config.yaml
-    with open(config_path, "r") as f:
-        config = yaml.safe_load(f)
+    # load config
+    with open(config_yaml, "r") as fh:
+        config = yaml.safe_load(fh)
 
-    # Load artifacts
-    pipeline_path = config.get("artifacts", {}).get(
-        "preprocessing_pipeline", "models/preprocessing_pipeline.pkl")
-    model_cfg = config.get("model", {})
-    active = model_cfg.get("active", "decision_tree")
-    model_path = model_cfg.get(active, {}).get("save_path", "models/model.pkl")
+    pp_path = config.get("artifacts", {}).get(
+        "preprocessing_pipeline", "models/preprocessing_pipeline.pkl"
+    )
+    model_path = config.get("artifacts", {}).get(
+        "model_path", "models/model.pkl"
+    )
 
-    logger.info(f"Loading preprocessing pipeline from {pipeline_path}")
-    pipeline = load_artifact(pipeline_path, artifact_type="pipeline")
+    logger.info("Loading preprocessing pipeline: %s", pp_path)
+    pipeline = _load_pickle(pp_path, "preprocessing pipeline")
 
-    logger.info(f"Loading trained model from {model_path}")
-    model = load_artifact(model_path, artifact_type="model")
+    logger.info("Loading trained model: %s", model_path)
+    model = _load_pickle(model_path, "model")
 
-    # Load input data
-    logger.info(f"Reading input data from {input_path}")
-    input_df = pd.read_csv(input_path)
-    logger.info(f"Input shape: {input_df.shape}")
+    # read raw data
+    logger.info("Reading input CSV: %s", input_csv)
+    input_df = pd.read_csv(input_csv)
+    logger.info("Input shape: %s", input_df.shape)
 
-    # Features: should match original raw_features in config
+    # harmonise column names from config
+    rename_map = config.get("preprocessing", {}).get("rename_columns", {})
+    if rename_map:
+        input_df = input_df.rename(columns=rename_map)
+
     raw_features = config.get("raw_features", [])
-    if not raw_features:
-        logger.error("raw_features not set in config.yaml")
-        sys.exit(1)
-
-    missing = [col for col in raw_features if col not in input_df.columns]
+    missing = [c for c in raw_features if c not in input_df.columns]
     if missing:
-        logger.error(f"Input data missing required columns: {missing}")
+        logger.error("Missing required columns after renaming: %s", missing)
         sys.exit(1)
-    input_data = input_df[raw_features]
 
-    # Run preprocessing
+    X_raw = input_df[raw_features]
+
+    # transform
     logger.info("Applying preprocessing pipeline to input data")
-    X_proc = pipeline.transform(input_data)
+    X_proc = pipeline.transform(X_raw)
 
-    # Run inference
+    # keep **only** engineered features used in training
+    engineered = config.get("features", {}).get("engineered", [])
+    if engineered:
+        feature_names = get_output_feature_names(
+            pipeline, raw_features, config)
+
+        # take only the engineered names that are actually present
+        selected = [f for f in engineered if f in feature_names]
+        if not selected:
+            logger.error(
+                "None of the engineered features are present after transform")
+            sys.exit(1)
+
+        indices = [feature_names.index(f) for f in selected]
+        X_proc = X_proc[:, indices]
+
+    # predict
     logger.info("Generating predictions")
-    y_pred = model.predict(X_proc)
-    # Predict probability if supported
+    input_df["prediction"] = model.predict(X_proc)
     if hasattr(model, "predict_proba"):
-        y_prob = model.predict_proba(X_proc)[:, 1]
-        input_df["prediction_proba"] = y_prob
-    input_df["prediction"] = y_pred
+        input_df["prediction_proba"] = model.predict_proba(X_proc)[:, 1]
 
-    # Write output
-    logger.info(f"Writing predictions to {output_path}")
-    input_df.to_csv(output_path, index=False)
-    logger.info("Inference completed successfully")
+    # save
+    logger.info("Writing predictions to %s", output_csv)
+    Path(output_csv).parent.mkdir(parents=True, exist_ok=True)
+    input_df.to_csv(output_csv, index=False)
+    logger.info("Inference complete")
+
+
+# ───────────────────────────────
+# CLI entry point
+# ───────────────────────────────
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Run batch inference on a CSV file")
+    parser.add_argument("input_csv", help="Path to raw input CSV")
+    parser.add_argument("config_yaml", help="Path to config.yaml")
+    parser.add_argument("output_csv", help="Destination for predictions CSV")
+    args = parser.parse_args()
+
+    run_inference(args.input_csv, args.config_yaml, args.output_csv)
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Run batch inference")
-    parser.add_argument("--config", required=True, help="Path to config.yaml")
-    parser.add_argument("--input", required=True,
-                        help="CSV file with new raw data")
-    parser.add_argument("--output", required=True,
-                        help="CSV file to save predictions")
-    args = parser.parse_args()
+    main()
 
-    run_inference(
-        config_path=args.config,
-        input_path=args.input,
-        output_path=args.output,
-    )
+# python -m src.inference.inferencer data/inference/new_data.csv config.yaml data/inference/output_predictions.csv
