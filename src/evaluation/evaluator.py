@@ -1,13 +1,15 @@
-"""
-evaluator.py
+"""evaluator.py
 
-Binary classification evaluation utilities for MLOps pipelines.
-- Computes configurable metrics for any estimator (scikit-learn API)
-- Designed for modular use in model.py or as standalone analysis
-- All metrics, output paths, and options are config-driven for reproducibility
-- Returns results as dict and optionally saves artifact (JSON)
+Evaluation utilities for MLOps pipelines.
 
-Teaching note: Separate evaluation logic from training for clarity, reuse, and traceability.
+The module originally handled only binary classification but has been extended
+to support regression models as well.  Metrics to compute are driven by
+``config['metrics']`` so the same interface works for both tasks.  The
+functions return results as dictionaries and can optionally save them as JSON
+artifacts for reproducibility.
+
+Teaching note: Keep evaluation logic separate from training for clarity and
+reuse.
 """
 
 import logging
@@ -20,7 +22,10 @@ from sklearn.metrics import (
     recall_score,
     f1_score,
     roc_auc_score,
-    confusion_matrix
+    confusion_matrix,
+    mean_squared_error,
+    mean_absolute_error,
+    r2_score,
 )
 
 logger = logging.getLogger(__name__)
@@ -109,5 +114,39 @@ def evaluate_classification(
     # Log metrics
     split_label = f" [{split}]" if split else ""
     logger.info(f"Evaluation metrics{split_label}: {rounded_results}")
+
+    return results
+
+
+def evaluate_regression(
+    model,
+    X,
+    y,
+    config: Dict[str, Any],
+    save_path: Optional[str] = None,
+    split: Optional[str] = None,
+) -> Dict[str, float]:
+    """Evaluate a regression model according to ``config['metrics']``."""
+    y_pred = model.predict(X)
+
+    results = {}
+    for metric in config.get("metrics", []):
+        m = metric.lower()
+        if m in ["mse", "mean squared error"]:
+            results["MSE"] = mean_squared_error(y, y_pred)
+        elif m in ["mae", "mean absolute error"]:
+            results["MAE"] = mean_absolute_error(y, y_pred)
+        elif m in ["r2", "r^2", "r2 score"]:
+            results["R2"] = r2_score(y, y_pred)
+
+    if save_path is not None:
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        with open(save_path, "w") as f:
+            json.dump(results, f, indent=2)
+        logger.info(f"Evaluation results saved to {save_path}")
+
+    rounded = {k: round(float(v), 2) for k, v in results.items()}
+    split_label = f" [{split}]" if split else ""
+    logger.info(f"Evaluation metrics{split_label}: {rounded}")
 
     return results

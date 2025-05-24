@@ -21,7 +21,7 @@ data_split:
   random_state: 42
 
 model:
-  active: decision_tree  # Options: decision_tree, logistic_regression, random_forest
+  active: linear_regression  # Options: decision_tree, logistic_regression, random_forest, linear_regression
 
   decision_tree:
     save_path: models/decision_tree.pkl
@@ -43,6 +43,10 @@ model:
       n_estimators: 100
       max_depth: 5
       random_state: 42
+
+  linear_regression:
+    save_path: models/linear_regression.pkl
+    params: {}
 
 raw_features:  
   - rx_ds
@@ -96,13 +100,9 @@ features:
 target: OD
 
 metrics:
-  - Accuracy
-  - Precision (PPV)
-  - Recall (Sensitivity)
-  - Specificity
-  - F1 Score
-  - Negative Predictive Value (NPV)
-  - ROC AUC
+  - MSE
+  - MAE
+  - R2
 
 preprocessing:
   rename_columns:
