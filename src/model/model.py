@@ -14,14 +14,14 @@ import pickle
 from typing import Dict, Any
 import pandas as pd
 from sklearn.tree import DecisionTreeClassifier
-from sklearn.linear_model import LogisticRegression
+from sklearn.linear_model import LogisticRegression, LinearRegression
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import (
     accuracy_score, precision_score, recall_score, f1_score, roc_auc_score, confusion_matrix
 )
 from src.preprocess.preprocessing import build_preprocessing_pipeline, get_output_feature_names, run_preprocessing_pipeline
-from src.evaluation.evaluator import evaluate_classification
+from src.evaluation.evaluator import evaluate_classification, evaluate_regression
 
 
 logger = logging.getLogger(__name__)
@@ -30,7 +30,10 @@ MODEL_REGISTRY = {
     "decision_tree": DecisionTreeClassifier,
     "logistic_regression": LogisticRegression,
     "random_forest": RandomForestClassifier,
+    "linear_regression": LinearRegression,
 }
+
+REGRESSION_MODELS = {"linear_regression"}
 
 
 def train_model(X_train, y_train, model_type, params):
@@ -93,18 +96,32 @@ def run_model_pipeline(df: pd.DataFrame, config: Dict[str, Any]):
     split_cfg = config["data_split"]
     input_features_raw = [f for f in raw_features if f != target]
 
+    model_config = config["model"]
+    active = model_config.get("active", "decision_tree")
+    task = "regression" if active in REGRESSION_MODELS else "classification"
+
     X = df[input_features_raw]
     y = df[target]
     test_size = split_cfg.get("test_size", 0.2)
     valid_size = split_cfg.get("valid_size", 0.2)
     random_state = split_cfg.get("random_state", 42)
 
+    strat = y if task == "classification" else None
     X_train, X_temp, y_train, y_temp = train_test_split(
-        X, y, test_size=(test_size + valid_size), random_state=random_state, stratify=y
+        X,
+        y,
+        test_size=(test_size + valid_size),
+        random_state=random_state,
+        stratify=strat,
     )
     rel_valid = valid_size / (test_size + valid_size)
+    strat_temp = y_temp if task == "classification" else None
     X_valid, X_test, y_valid, y_test = train_test_split(
-        X_temp, y_temp, test_size=rel_valid, random_state=random_state, stratify=y_temp
+        X_temp,
+        y_temp,
+        test_size=rel_valid,
+        random_state=random_state,
+        stratify=strat_temp,
     )
     # --- Save raw data splits ---
     splits_dir = config.get("artifacts", {}).get("splits_dir", "data/splits")
@@ -155,7 +172,6 @@ def run_model_pipeline(df: pd.DataFrame, config: Dict[str, Any]):
 
     # Train model
     model_config = config["model"]
-    active = model_config.get("active", "decision_tree")
     active_model_cfg = model_config[active]
     model_type = active
     params = active_model_cfg.get("params", {})
@@ -166,7 +182,6 @@ def run_model_pipeline(df: pd.DataFrame, config: Dict[str, Any]):
         "model_path", "models/model.pkl")
     save_artifact(model, model_path)
 
-    active = model_config.get("active", "decision_tree")
     algo_model_path = model_config.get(active, {}).get("save_path", f"models/{active}.pkl")
     save_artifact(model, algo_model_path)
 
@@ -174,10 +189,16 @@ def run_model_pipeline(df: pd.DataFrame, config: Dict[str, Any]):
     artifacts_cfg = config.get("artifacts", {})
     metrics_path = artifacts_cfg.get("metrics_path", "models/metrics.json")
 
-    results_valid = evaluate_classification(
-        model, X_valid_pp.values, y_valid, config, split="validation")
-    results_test = evaluate_classification(
-        model, X_test_pp.values, y_test,  config, split="test")
+    if task == "classification":
+        results_valid = evaluate_classification(
+            model, X_valid_pp.values, y_valid, config, split="validation")
+        results_test = evaluate_classification(
+            model, X_test_pp.values, y_test, config, split="test")
+    else:
+        results_valid = evaluate_regression(
+            model, X_valid_pp.values, y_valid, config, split="validation")
+        results_test = evaluate_regression(
+            model, X_test_pp.values, y_test, config, split="test")
 
     def round_metrics(metrics_dict, ndigits=2):
         rounded = {}
